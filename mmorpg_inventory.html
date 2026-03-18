@@ -2214,15 +2214,49 @@ let selectedMapNpcKey = null;
 let mapShowLandmarks = true;
 let mapShowNpcLabels = false;
 
-// Map configurations: world coordinate bounds per area (derived from NPC + landmark data)
-// worldMinX/Z and worldMaxX/Z are the world coordinate extents mapped to the image edges
+// Map configurations: world coordinate bounds per area (derived from NPC + landmark data, 1 game unit ≈ 1 pixel)
+// Calibrated areas have worldMinX/Z + worldMaxX/Z. Uncalibrated areas show map only (no NPC markers).
 const MAP_CONFIGS = {
-  AreaSerbule: {
-    name: 'Serbule',
-    image: 'Maps/Map_AreaSerbule.webp',
-    worldMinX: 200, worldMaxX: 2550,
-    worldMinZ: 300, worldMaxZ: 2800,
-  },
+  // === Outdoor Areas (auto-calibrated from NPC + landmark data) ===
+  AreaSerbule:      { name: 'Serbule',           image: 'Maps/Map_AreaSerbule.webp',      worldMinX: 391,   worldMaxX: 2352,  worldMinZ: 529,   worldMaxZ: 2577 },
+  AreaSerbule2:     { name: 'Serbule Hills',      image: 'Maps/Map_AreaSerbule2.png',      worldMinX: 243,   worldMaxX: 2291,  worldMinZ: 636,   worldMaxZ: 2624 },
+  AreaEltibule:     { name: 'Eltibule',           image: 'Maps/Map_AreaEltibule.png',      worldMinX: 471,   worldMaxX: 2519,  worldMinZ: 582,   worldMaxZ: 2615 },
+  AreaKurMountains: { name: 'Kur Mountains',      image: 'Maps/Map_AreaKurMountains.png',  worldMinX: 1048,  worldMaxX: 3096,  worldMinZ: 1028,  worldMaxZ: 3076 },
+  AreaSunVale:      { name: 'Sun Vale',           image: 'Maps/Map_AreaSunVale.png',       worldMinX: -997,  worldMaxX: 1051,  worldMinZ: -944,  worldMaxZ: 1104 },
+  AreaDesert1:      { name: 'Ilmari Desert',      image: 'Maps/Map_AreaDesert1.png',       worldMinX: -1420, worldMaxX: 628,   worldMinZ: -1559, worldMaxZ: 489  },
+  AreaRahu:         { name: 'Rahu',               image: 'Maps/Map_AreaRahu.png',          worldMinX: -12,   worldMaxX: 1708,  worldMinZ: -1202, worldMaxZ: 570  },
+  AreaGazluk:       { name: 'Gazluk Plateau',     image: 'Maps/Map_AreaGazluk.png',        worldMinX: -1245, worldMaxX: 792,   worldMinZ: -849,  worldMaxZ: 1199 },
+  AreaPovus:        { name: 'Povus',              image: 'Maps/Map_Povus.png',             worldMinX: 457,   worldMaxX: 2347,  worldMinZ: 358,   worldMaxZ: 2406 },
+  AreaVidaria:      { name: 'Vidaria',            image: 'Maps/Map_Vidaria.png',           worldMinX: 452,   worldMaxX: 2342,  worldMinZ: 344,   worldMaxZ: 2392 },
+  AreaFaeRealm1:    { name: 'Fae Realm',          image: 'Maps/Map_AreaFaeRealm1.png',     worldMinX: 1002,  worldMaxX: 2026,  worldMinZ: 1053,  worldMaxZ: 2077 },
+  AreaNewbieIsland: { name: 'Anagoge Island',     image: 'Maps/Map_AreaNewbieIsland.png',  worldMinX: -284,  worldMaxX: 740,   worldMinZ: -153,  worldMaxZ: 871  },
+  AreaStatehelm:    { name: 'Statehelm',          image: 'Maps/Map_AreaStatehelm.png',     worldMinX: -74,   worldMaxX: 1076,  worldMinZ: 322,   worldMaxZ: 1472 },
+  AreaCasino:       { name: 'Red Wing Casino',    image: 'Maps/Map_AreaCasino.png',        worldMinX: -525,  worldMaxX: 499,   worldMinZ: -394,  worldMaxZ: 630  },
+  // === Dungeons & Caves (matched by area name, no coordinate calibration) ===
+  AreaCave1:           { name: 'Goblin Dungeon',     image: 'Maps/Map_GoblinDungeon.png'             },
+  AreaCave2:           { name: 'Wolf Cave',           image: 'Maps/Map_WolfCave.png'                  },
+  AreaMyconianCave:    { name: 'Myconian Caverns',    image: 'Maps/Map_MyconianCave.png',  worldMinX: -2630, worldMaxX: -2089, worldMinZ: -56,   worldMaxZ: 968  },
+  AreaFaeRealm1Caves:  { name: 'The Wintertide',      image: 'Maps/Map_TheWintertide.png'             },
+  AreaGazlukCaves:     { name: 'New Prestonbule',     image: 'Maps/Map_NewPrestonbule.png'            },
+  AreaGazlukKeep:      { name: 'Gazluk Keep',         image: 'Maps/FortGazluk1.png'                   },
+  AreaKurCaves:        { name: 'Sacred Grotto',       image: 'Maps/Map_KurTower.png'                  },
+  AreaPovusCaves:      { name: 'Povus Caves',         image: 'Maps/Map_PovusCaves_Level1.png'         },
+  AreaPovusCaves2:     { name: "Errruka's Cave",      image: 'Maps/Map_PovusCaves_ErrrukasCave.png'   },
+  AreaRahuCaves:       { name: 'Rahu Sewer',          image: 'Maps/Map_RahuSewer.png'                 },
+  AreaSerbuleCaves:    { name: 'Ranalon Den',         image: 'Maps/Map_RanalonBase.png'               },
+  AreaStatehelmCaves:  { name: 'Statehelm Sewers',    image: 'Maps/Map_StatehelmCaves_SafeHouseA.png' },
+  AreaSunValeCaves:    { name: 'Sun Vale Caves',      image: 'Maps/Map_SunValeCave1.png'              },
+  AreaTomb1:           { name: 'Carpal Tunnels',      image: 'Maps/Map_CarpalTunnels.png'             },
+  AreaVidariaCaves:    { name: 'Beneath Vidaria',     image: 'Maps/NoMap.png'                         },
+  // === Additional maps (display only) ===
+  _SpiderCave:         { name: 'Spider Cave',         image: 'Maps/Map_SpiderCave.png'                },
+  _SerbuleSewer:       { name: 'Serbule Sewer',       image: 'Maps/Map_SerbuleSewer.png'              },
+  _Labyrinth:          { name: 'Labyrinth',           image: 'Maps/Map_Labyrinth.png'                 },
+  _GoblinTopFloor:     { name: 'Goblin Dungeon (Top)',image: 'Maps/Map_GoblinDungeon_TopFloor.png'    },
+  _KurCourtyard:       { name: 'Kur Courtyard',       image: 'Maps/Map_KurCourtyard.png'              },
+  _DarkChapel:         { name: 'Dark Chapel',         image: 'Maps/Map_DarkChapel.png'                },
+  _Borghild:           { name: 'Borghild',            image: 'Maps/Map_Borghild.png'                  },
+  _FortGazluk2:        { name: 'Fort Gazluk (2)',     image: 'Maps/FortGazluk2.png'                   },
 };
 
 function worldToMapPct(x, z, cfg) {
@@ -3280,10 +3314,12 @@ function renderMapsTab() {
     </div>`;
   }).join('');
 
-  // ── Area selector ──
-  const areaOptions = Object.entries(MAP_CONFIGS)
-    .map(([k, v]) => `<option value="${k}"${k === currentMapArea ? ' selected' : ''}>${v.name}</option>`)
-    .join('');
+  // ── Area selector (grouped) ──
+  const outdoorKeys = ['AreaSerbule','AreaSerbule2','AreaEltibule','AreaKurMountains','AreaSunVale','AreaDesert1','AreaRahu','AreaGazluk','AreaPovus','AreaVidaria','AreaFaeRealm1','AreaNewbieIsland','AreaStatehelm','AreaCasino'];
+  const dungeonKeys = ['AreaCave1','AreaCave2','AreaMyconianCave','AreaFaeRealm1Caves','AreaGazlukCaves','AreaGazlukKeep','AreaKurCaves','AreaPovusCaves','AreaPovusCaves2','AreaRahuCaves','AreaSerbuleCaves','AreaStatehelmCaves','AreaSunValeCaves','AreaTomb1','AreaVidariaCaves'];
+  const extraKeys = Object.keys(MAP_CONFIGS).filter(k => k.startsWith('_'));
+  const makeOpts = keys => keys.filter(k => MAP_CONFIGS[k]).map(k => `<option value="${k}"${k===currentMapArea?' selected':''}>${MAP_CONFIGS[k].name}${MAP_CONFIGS[k].worldMinX==null?' ⚠':''}` + `</option>`).join('');
+  const areaOptions = `<optgroup label="Outdoor Areas">${makeOpts(outdoorKeys)}</optgroup><optgroup label="Dungeons &amp; Caves">${makeOpts(dungeonKeys)}</optgroup><optgroup label="Other">${makeOpts(extraKeys)}</optgroup>`;
 
   // ── Detail panel ──
   const detailHtml = selectedMapNpcKey ? renderMapNpcDetail(selectedMapNpcKey, char) :
@@ -3305,7 +3341,7 @@ function renderMapsTab() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
           <select onchange="setMapArea(this.value)" style="background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:13px">${areaOptions}</select>
-          <span style="font-size:11px;color:var(--text-dim)">${areaNpcs.length} NPCs · ${areaLandmarks.length} landmarks</span>
+          <span style="font-size:11px;color:var(--text-dim)">${cfg.worldMinX != null ? `${areaNpcs.length} NPCs · ${areaLandmarks.length} landmarks` : '⚠ No coordinate data — map display only'}</span>
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim);cursor:pointer">
             <input type="checkbox" ${mapShowLandmarks?'checked':''} onchange="toggleMapLandmarks()"> Landmarks
           </label>
