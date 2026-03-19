@@ -1814,8 +1814,18 @@ function toggleAvailWO(woKey) {
 let _availWOEntries = null; // cache for toggle re-renders
 let availWOSearchQ = '';
 
+function onAvailWOSearch(v) {
+  availWOSearchQ = v;
+  filterAvailWOs();
+  setTimeout(() => {
+    const el = document.getElementById('availWOSearch');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, 10);
+}
+function clearAvailWOSearch() { availWOSearchQ = ''; renderAvailableWOsTab(); }
+
 function filterAvailWOs() {
-  availWOSearchQ = document.getElementById('availWOSearch')?.value.toLowerCase() || '';
+  const q = availWOSearchQ.toLowerCase();
   const entries = _availWOEntries;
   if (!entries) return;
 
@@ -1824,7 +1834,7 @@ function filterAvailWOs() {
     const skill = entry.woKey.split('_')[0];
     const recipe = entry.recipe;
     const name = recipe ? recipe[0] : woKeyToDisplayName(entry.woKey);
-    if (availWOSearchQ && !name.toLowerCase().includes(availWOSearchQ) && !skill.toLowerCase().includes(availWOSearchQ)) continue;
+    if (q && !name.toLowerCase().includes(q) && !skill.toLowerCase().includes(q)) continue;
     if (!bySkill[skill]) bySkill[skill] = [];
     bySkill[skill].push(entry);
   }
@@ -1840,6 +1850,8 @@ function filterAvailWOs() {
   container.innerHTML = html || '<div style="color:var(--text-dim);padding:16px;font-size:13px">No results</div>';
   const badge = document.getElementById('availWOBadge');
   if (badge) badge.textContent = filtered;
+  const clearBtn = document.querySelector('#availWOSearch')?.previousElementSibling;
+  if (clearBtn) clearBtn.classList.toggle('visible', !!q);
 }
 
 function renderAvailableWOsTab() {
@@ -1898,9 +1910,12 @@ function renderAvailableWOsTab() {
   const html = `<div class="full-panel"><div class="wo-section">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="wo-section-title" style="margin:0">Available Work Order Scrolls <span id="availWOBadge" class="badge">${entries.length}</span></div>
-      <input id="availWOSearch" type="search" placeholder="Search…" value="${availWOSearchQ}"
-        style="flex:1;min-width:160px;max-width:280px;padding:4px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)"
-        oninput="filterAvailWOs()">
+      <div class="search-input-wrap" style="max-width:260px">
+        <button class="search-clear ${availWOSearchQ?'visible':''}" onclick="clearAvailWOSearch()">✕</button>
+        <input class="search-input" id="availWOSearch" style="padding-left:34px" placeholder="Search…"
+          value="${availWOSearchQ.replace(/"/g,'&quot;')}" oninput="onAvailWOSearch(this.value)">
+        <span class="search-icon">⌕</span>
+      </div>
     </div>
     <div id="availWOList">${skillRows}</div>
   </div></div>`;
@@ -2948,7 +2963,14 @@ function setQuestLocationFilter(loc) {
   questLocationFilter = questLocationFilter === loc ? '' : loc;
   renderQuestsTab();
 }
-function onQuestSearch(v) { questSearchQ = v; renderQuestsTab(); }
+function onQuestSearch(v) {
+  questSearchQ = v;
+  renderQuestsTab();
+  setTimeout(() => {
+    const el = document.querySelector('#appContent .search-input[placeholder="Search quests…"]');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }, 10);
+}
 function clearQuestSearch() { questSearchQ = ''; renderQuestsTab(); }
 function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; setMainTab('quests'); }
 
