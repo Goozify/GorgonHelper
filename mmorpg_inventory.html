@@ -1460,8 +1460,8 @@ function toggleSourceExpand(key, typeId, maxEntries, e) {
   if (el) el.outerHTML = buildItemSourcesHtml(typeId, maxEntries, key);
 }
 
-function buildItemSourcesHtml(typeId, maxEntries, key) {
-  const sources = SOURCES_ITEMS[String(typeId)];
+function buildItemSourcesHtml(typeId, maxEntries, key, filteredSources) {
+  const sources = filteredSources || SOURCES_ITEMS[String(typeId)];
   if (!sources || sources.length === 0) return '';
   const expanded = expandedSources.has(key);
   const shown = expanded ? sources : sources.slice(0, maxEntries);
@@ -1482,12 +1482,14 @@ function buildItemSourcesHtml(typeId, maxEntries, key) {
   return `<div id="src_${key}" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:2px;align-items:center">${badges}${toggleBtn}</div>`;
 }
 
-function renderItemSources(typeId, maxEntries = 6, ctxKey = '') {
+function renderItemSources(typeId, maxEntries = 6, ctxKey = '', excludeTypes = []) {
   if (!dataLoaded.sources_items || !typeId) return '';
-  const sources = SOURCES_ITEMS[String(typeId)];
+  let sources = SOURCES_ITEMS[String(typeId)];
   if (!sources || sources.length === 0) return '';
+  if (excludeTypes.length) sources = sources.filter(s => !excludeTypes.includes(s.t));
+  if (sources.length === 0) return '';
   const key = ctxKey ? `${ctxKey}_${typeId}` : String(typeId);
-  return buildItemSourcesHtml(typeId, maxEntries, key);
+  return buildItemSourcesHtml(typeId, maxEntries, key, sources);
 }
 
 function positionTooltip(tip, e) {
@@ -2593,7 +2595,7 @@ function buildRecipeRows(displayList, allRecipeKeys) {
           const iconId = ITEMS_ICONS[String(ingId)];
           const iconUrl = iconId ? getIconUrl(iconId) : null;
           const iconHtml = iconUrl ? `<img class="item-icon" src="${iconUrl}" alt="" style="width:14px;height:14px;margin-right:4px;vertical-align:middle">` : '';
-          const srcBadges = renderItemSources(ingId, 4, `rec_${k}`);
+          const srcBadges = renderItemSources(ingId, 4, `rec_${k}`, ['NpcGift']);
           const chanceHtml = chance != null ? `<span style="font-size:10px;color:var(--orange);margin-left:4px">${Math.round(chance*100)}% consumed</span>` : '';
           return `<div style="display:flex;align-items:flex-start;gap:4px;padding:2px 0">
             <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;min-width:14px">${qty}×</span>
