@@ -9,3 +9,6 @@ api-result.xml
 Character_*.json
 *_items_*Z.json
 pg_landmarks.zip
+
+.claude/
+Original/
