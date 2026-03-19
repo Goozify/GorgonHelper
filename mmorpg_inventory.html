@@ -282,7 +282,8 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .map-npc-panel{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;position:sticky;top:0}
 .map-panel-npc-name{font-size:15px;font-weight:600;color:var(--text-bright)}
 .map-panel-section{font-size:10px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin:12px 0 5px}
-.map-quest-item{font-size:12px;color:var(--text);padding:3px 0;border-bottom:1px solid rgba(42,47,63,.4)}
+.map-quest-item{font-size:12px;color:var(--accent);padding:3px 0;border-bottom:1px solid rgba(42,47,63,.4);cursor:pointer}
+.map-quest-item:hover{text-decoration:underline}
 .map-quest-item:last-child{border-bottom:none}
 .map-service-chip{display:inline-flex;font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text-dim);margin:2px 3px 2px 0}
 .map-legend-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);margin-bottom:3px}
@@ -2213,59 +2214,239 @@ let currentMapArea = 'AreaSerbule';
 let selectedMapNpcKey = null;
 let mapShowLandmarks = true;
 let mapShowNpcLabels = false;
+let mapCalibrationMode = false;
+const mapNpcOverrides = {}; // {areaKey: {npcKey: {px, py}}} percent positions
+const mapLandmarkOverrides = {}; // {areaKey: {lmName: {px, py}}} percent positions
+let _calDragNpc = null, _calDragNpcRafPending = false;
+let _calDragLm = null, _calDragLmRafPending = false;
+let mapZoom = 1.0;
+const MAP_ZOOM_MIN = 0.2, MAP_ZOOM_MAX = 5.0;
+let _mapScrollPending = false;
+
+function getMapBaseWidth() {
+  const sidebarW = 256 + 14 + 32; // panel + gap + padding
+  return Math.max(400, window.innerWidth - sidebarW);
+}
+function setMapZoom(z, pivotX, pivotY) {
+  const outer = document.querySelector('.map-outer');
+  const newZoom = Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, z));
+  if (newZoom === mapZoom && outer) return;
+  const ratio = newZoom / mapZoom;
+  const sx = outer ? (outer.scrollLeft + (pivotX ?? outer.clientWidth/2))  * ratio - (pivotX ?? outer.clientWidth/2)  : 0;
+  const sy = outer ? (outer.scrollTop  + (pivotY ?? outer.clientHeight/2)) * ratio - (pivotY ?? outer.clientHeight/2) : 0;
+  mapZoom = newZoom;
+  renderMapsTab();
+  requestAnimationFrame(() => { const o = document.querySelector('.map-outer'); if (o) { o.scrollLeft = sx; o.scrollTop = sy; } });
+}
+function fitMapToWindow() {
+  const availW = getMapBaseWidth();
+  const availH = window.innerHeight - 220;
+  const img = document.querySelector('.map-container img');
+  const w = img?.naturalWidth || 1961, h = img?.naturalHeight || 2048;
+  mapZoom = Math.min(availW / w, availH / h, 1.0);
+  renderMapsTab();
+}
+function handleMapWheel(e) {
+  e.preventDefault();
+  if (_mapScrollPending) return;
+  _mapScrollPending = true;
+  requestAnimationFrame(() => {
+    _mapScrollPending = false;
+    const outer = document.querySelector('.map-outer');
+    if (!outer) return;
+    const rect = outer.getBoundingClientRect();
+    const pivotX = e.clientX - rect.left, pivotY = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    setMapZoom(mapZoom * factor, pivotX, pivotY);
+  });
+}
+function setupMapScrollHandler() {
+  const outer = document.querySelector('.map-outer');
+  if (!outer || outer._wheelBound) return;
+  outer._wheelBound = true;
+  outer.addEventListener('wheel', handleMapWheel, {passive: false});
+}
+
+// File-based overrides loaded from pg_map_overrides.json (shared base layer)
+let fileMapOverrides = { npcs: {}, landmarks: {} };
+
+function loadMapNpcOverrides() {
+  try { const s = localStorage.getItem('mapNpcOverrides'); if (s) Object.assign(mapNpcOverrides, JSON.parse(s)); } catch(e) {}
+}
+function saveMapNpcOverrides() {
+  try { localStorage.setItem('mapNpcOverrides', JSON.stringify(mapNpcOverrides)); } catch(e) {}
+}
+function loadMapLandmarkOverrides() {
+  try { const s = localStorage.getItem('mapLandmarkOverrides'); if (s) Object.assign(mapLandmarkOverrides, JSON.parse(s)); } catch(e) {}
+}
+function saveMapLandmarkOverrides() {
+  try { localStorage.setItem('mapLandmarkOverrides', JSON.stringify(mapLandmarkOverrides)); } catch(e) {}
+}
+// localStorage takes priority over file data per-marker
+function getNpcOverride(areaKey, npcKey) {
+  return mapNpcOverrides[areaKey]?.[npcKey] || fileMapOverrides.npcs?.[areaKey]?.[npcKey] || null;
+}
+function getLandmarkOverride(areaKey, lmName) {
+  return mapLandmarkOverrides[areaKey]?.[lmName] || fileMapOverrides.landmarks?.[areaKey]?.[lmName] || null;
+}
+async function fetchMapOverrides() {
+  try {
+    const r = await fetch('pg_map_overrides.json');
+    if (!r.ok) return;
+    const data = await r.json();
+    fileMapOverrides = { npcs: data.npcs || {}, landmarks: data.landmarks || {} };
+    if (document.querySelector('.map-outer')) renderMapsTab(); // refresh if map is open
+  } catch(e) {}
+}
+function exportMapOverrides() {
+  // Merge file base with localStorage edits (localStorage wins per-marker)
+  const merged = { npcs: {}, landmarks: {} };
+  for (const [area, npcs] of Object.entries(fileMapOverrides.npcs)) {
+    merged.npcs[area] = {...npcs};
+  }
+  for (const [area, npcs] of Object.entries(mapNpcOverrides)) {
+    if (!merged.npcs[area]) merged.npcs[area] = {};
+    Object.assign(merged.npcs[area], npcs);
+  }
+  for (const [area, lms] of Object.entries(fileMapOverrides.landmarks)) {
+    merged.landmarks[area] = {...lms};
+  }
+  for (const [area, lms] of Object.entries(mapLandmarkOverrides)) {
+    if (!merged.landmarks[area]) merged.landmarks[area] = {};
+    Object.assign(merged.landmarks[area], lms);
+  }
+  const blob = new Blob([JSON.stringify(merged, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pg_map_overrides.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function toggleMapCalibration() { mapCalibrationMode = !mapCalibrationMode; _calDragNpc = null; _calDragLm = null; renderMapsTab(); }
+function resetNpcOverrides() { delete mapNpcOverrides[currentMapArea]; saveMapNpcOverrides(); renderMapsTab(); }
+function resetLandmarkOverrides() { delete mapLandmarkOverrides[currentMapArea]; saveMapLandmarkOverrides(); renderMapsTab(); }
+function startNpcCalDrag(e, npcKey) {
+  if (!mapCalibrationMode) return;
+  e.preventDefault();
+  const container = document.querySelector('.map-container');
+  if (!container) return;
+  const cfg = MAP_CONFIGS[currentMapArea]; if (!cfg) return;
+  const override = getNpcOverride(currentMapArea, npcKey);
+  const npc = NPCS[npcKey];
+  const startPct = override ? {x: override.px, y: override.py} : worldToMapPct(npc.pos.x, npc.pos.z, cfg);
+  _calDragNpc = { npcKey, rect: container.getBoundingClientRect(), startClientX: e.clientX, startClientY: e.clientY, startPct: {x: startPct.x, y: startPct.y} };
+}
+function startLandmarkCalDrag(e, lmName) {
+  if (!mapCalibrationMode) return;
+  e.preventDefault();
+  const container = document.querySelector('.map-container');
+  if (!container) return;
+  const cfg = MAP_CONFIGS[currentMapArea]; if (!cfg) return;
+  const override = getLandmarkOverride(currentMapArea, lmName);
+  let startPct;
+  if (override) {
+    startPct = {x: override.px, y: override.py};
+  } else {
+    const lm = (LANDMARKS[currentMapArea] || []).find(l => l.name === lmName);
+    startPct = lm ? worldToMapPct(lm.x, lm.z, cfg) : {x: 50, y: 50};
+  }
+  _calDragLm = { lmName, rect: container.getBoundingClientRect(), startClientX: e.clientX, startClientY: e.clientY, startPct: {x: startPct.x, y: startPct.y} };
+}
+document.addEventListener('mousemove', function(e) {
+  // Per-NPC drag
+  if (_calDragNpc && !_calDragNpcRafPending) {
+    _calDragNpcRafPending = true;
+    requestAnimationFrame(() => {
+      _calDragNpcRafPending = false;
+      if (!_calDragNpc) return;
+      const dpx = e.clientX - _calDragNpc.startClientX, dpy = e.clientY - _calDragNpc.startClientY;
+      const newPx = Math.max(-2, Math.min(102, _calDragNpc.startPct.x + dpx / _calDragNpc.rect.width * 100));
+      const newPy = Math.max(-2, Math.min(102, _calDragNpc.startPct.y + dpy / _calDragNpc.rect.height * 100));
+      const marker = document.querySelector(`.map-npc-marker[data-key="${_calDragNpc.npcKey}"]`);
+      if (marker) { marker.style.left = newPx.toFixed(2) + '%'; marker.style.top = newPy.toFixed(2) + '%'; }
+      if (!mapNpcOverrides[currentMapArea]) mapNpcOverrides[currentMapArea] = {};
+      mapNpcOverrides[currentMapArea][_calDragNpc.npcKey] = {px: newPx, py: newPy};
+    });
+    return;
+  }
+  // Per-landmark drag
+  if (_calDragLm && !_calDragLmRafPending) {
+    _calDragLmRafPending = true;
+    requestAnimationFrame(() => {
+      _calDragLmRafPending = false;
+      if (!_calDragLm) return;
+      const dpx = e.clientX - _calDragLm.startClientX, dpy = e.clientY - _calDragLm.startClientY;
+      const newPx = Math.max(-2, Math.min(102, _calDragLm.startPct.x + dpx / _calDragLm.rect.width * 100));
+      const newPy = Math.max(-2, Math.min(102, _calDragLm.startPct.y + dpy / _calDragLm.rect.height * 100));
+      const marker = document.querySelector(`.map-landmark-marker[data-lmkey="${CSS.escape(_calDragLm.lmName)}"]`);
+      if (marker) { marker.style.left = newPx.toFixed(2) + '%'; marker.style.top = newPy.toFixed(2) + '%'; }
+      if (!mapLandmarkOverrides[currentMapArea]) mapLandmarkOverrides[currentMapArea] = {};
+      mapLandmarkOverrides[currentMapArea][_calDragLm.lmName] = {px: newPx, py: newPy};
+    });
+    return;
+  }
+});
+document.addEventListener('mouseup', () => {
+  if (_calDragNpc) { _calDragNpc = null; saveMapNpcOverrides(); }
+  if (_calDragLm) { _calDragLm = null; saveMapLandmarkOverrides(); }
+});
+loadMapNpcOverrides();
+loadMapLandmarkOverrides();
+fetchMapOverrides();
 
 // Map configurations: world coordinate bounds per area (derived from NPC + landmark data, 1 game unit ≈ 1 pixel)
 // Calibrated areas have worldMinX/Z + worldMaxX/Z. Uncalibrated areas show map only (no NPC markers).
 const MAP_CONFIGS = {
   // === Outdoor Areas (auto-calibrated from NPC + landmark data) ===
-  AreaSerbule:      { name: 'Serbule',           image: 'Maps/Map_AreaSerbule.webp',      worldMinX: 391,   worldMaxX: 2352,  worldMinZ: 529,   worldMaxZ: 2577 },
-  AreaSerbule2:     { name: 'Serbule Hills',      image: 'Maps/Map_AreaSerbule2.png',      worldMinX: 243,   worldMaxX: 2291,  worldMinZ: 636,   worldMaxZ: 2624 },
-  AreaEltibule:     { name: 'Eltibule',           image: 'Maps/Map_AreaEltibule.png',      worldMinX: 471,   worldMaxX: 2519,  worldMinZ: 582,   worldMaxZ: 2615 },
-  AreaKurMountains: { name: 'Kur Mountains',      image: 'Maps/Map_AreaKurMountains.png',  worldMinX: 1048,  worldMaxX: 3096,  worldMinZ: 1028,  worldMaxZ: 3076 },
-  AreaSunVale:      { name: 'Sun Vale',           image: 'Maps/Map_AreaSunVale.png',       worldMinX: -997,  worldMaxX: 1051,  worldMinZ: -944,  worldMaxZ: 1104 },
-  AreaDesert1:      { name: 'Ilmari Desert',      image: 'Maps/Map_AreaDesert1.png',       worldMinX: -1420, worldMaxX: 628,   worldMinZ: -1559, worldMaxZ: 489  },
-  AreaRahu:         { name: 'Rahu',               image: 'Maps/Map_AreaRahu.png',          worldMinX: -12,   worldMaxX: 1708,  worldMinZ: -1202, worldMaxZ: 570  },
-  AreaGazluk:       { name: 'Gazluk Plateau',     image: 'Maps/Map_AreaGazluk.png',        worldMinX: -1245, worldMaxX: 792,   worldMinZ: -849,  worldMaxZ: 1199 },
-  AreaPovus:        { name: 'Povus',              image: 'Maps/Map_Povus.png',             worldMinX: 457,   worldMaxX: 2347,  worldMinZ: 358,   worldMaxZ: 2406 },
-  AreaVidaria:      { name: 'Vidaria',            image: 'Maps/Map_Vidaria.png',           worldMinX: 452,   worldMaxX: 2342,  worldMinZ: 344,   worldMaxZ: 2392 },
-  AreaFaeRealm1:    { name: 'Fae Realm',          image: 'Maps/Map_AreaFaeRealm1.png',     worldMinX: 1002,  worldMaxX: 2026,  worldMinZ: 1053,  worldMaxZ: 2077 },
-  AreaNewbieIsland: { name: 'Anagoge Island',     image: 'Maps/Map_AreaNewbieIsland.png',  worldMinX: -284,  worldMaxX: 740,   worldMinZ: -153,  worldMaxZ: 871  },
-  AreaStatehelm:    { name: 'Statehelm',          image: 'Maps/Map_AreaStatehelm.png',     worldMinX: -74,   worldMaxX: 1076,  worldMinZ: 322,   worldMaxZ: 1472 },
-  AreaCasino:       { name: 'Red Wing Casino',    image: 'Maps/Map_AreaCasino.png',        worldMinX: -525,  worldMaxX: 499,   worldMinZ: -394,  worldMaxZ: 630  },
-  // === Dungeons & Caves (matched by area name, no coordinate calibration) ===
-  AreaCave1:           { name: 'Goblin Dungeon',     image: 'Maps/Map_GoblinDungeon.png'             },
-  AreaCave2:           { name: 'Wolf Cave',           image: 'Maps/Map_WolfCave.png'                  },
-  AreaMyconianCave:    { name: 'Myconian Caverns',    image: 'Maps/Map_MyconianCave.png',  worldMinX: -2630, worldMaxX: -2089, worldMinZ: -56,   worldMaxZ: 968  },
-  AreaFaeRealm1Caves:  { name: 'The Wintertide',      image: 'Maps/Map_TheWintertide.png'             },
-  AreaGazlukCaves:     { name: 'New Prestonbule',     image: 'Maps/Map_NewPrestonbule.png'            },
-  AreaGazlukKeep:      { name: 'Gazluk Keep',         image: 'Maps/FortGazluk1.png'                   },
-  AreaKurCaves:        { name: 'Sacred Grotto',       image: 'Maps/Map_KurTower.png'                  },
-  AreaPovusCaves:      { name: 'Povus Caves',         image: 'Maps/Map_PovusCaves_Level1.png'         },
-  AreaPovusCaves2:     { name: "Errruka's Cave",      image: 'Maps/Map_PovusCaves_ErrrukasCave.png'   },
-  AreaRahuCaves:       { name: 'Rahu Sewer',          image: 'Maps/Map_RahuSewer.png'                 },
-  AreaSerbuleCaves:    { name: 'Ranalon Den',         image: 'Maps/Map_RanalonBase.png'               },
-  AreaStatehelmCaves:  { name: 'Statehelm Sewers',    image: 'Maps/Map_StatehelmCaves_SafeHouseA.png' },
-  AreaSunValeCaves:    { name: 'Sun Vale Caves',      image: 'Maps/Map_SunValeCave1.png'              },
-  AreaTomb1:           { name: 'Carpal Tunnels',      image: 'Maps/Map_CarpalTunnels.png'             },
-  AreaVidariaCaves:    { name: 'Beneath Vidaria',     image: 'Maps/NoMap.png'                         },
+  AreaSerbule:      { name: 'Serbule',           image: 'Maps/Map_AreaSerbule.jpg',       worldMinX: 200,   worldMaxX: 2550,  worldMinZ: 300,   worldMaxZ: 2800 },
+  AreaSerbule2:     { name: 'Serbule Hills',      image: 'Maps/Map_AreaSerbule2.jpg',      worldMinX: 105,   worldMaxX: 2429,  worldMinZ: 238,   worldMaxZ: 3021 },
+  AreaEltibule:     { name: 'Eltibule',           image: 'Maps/Map_AreaEltibule.jpg',      worldMinX: 227,   worldMaxX: 2762,  worldMinZ: 60,    worldMaxZ: 3136,  rotate180: true },
+  AreaKurMountains: { name: 'Kur Mountains',      image: 'Maps/Map_AreaKurMountains.jpg',  worldMinX: 412,   worldMaxX: 3733,  worldMinZ: 308,   worldMaxZ: 3796 },
+  AreaSunVale:      { name: 'Sun Vale',           image: 'Maps/Map_AreaSunVale.jpg',       worldMinX: -1858, worldMaxX: 1911,  worldMinZ: -1738, worldMaxZ: 1899 },
+  AreaDesert1:      { name: 'Ilmari Desert',      image: 'Maps/Map_AreaDesert1.jpg',       worldMinX: -1504, worldMaxX: 712,   worldMinZ: -1861, worldMaxZ: 792  },
+  AreaRahu:         { name: 'Rahu',               image: 'Maps/Map_AreaRahu.jpg',          worldMinX: -9,    worldMaxX: 1705,  worldMinZ: -1268, worldMaxZ: 637  },
+  AreaGazluk:       { name: 'Gazluk Plateau',     image: 'Maps/Map_AreaGazluk.jpg',        worldMinX: -2437, worldMaxX: 1984,  worldMinZ: -2285, worldMaxZ: 2635 },
+  AreaPovus:        { name: 'Povus',              image: 'Maps/Map_Povus.jpg',             worldMinX: 55,    worldMaxX: 2748,  worldMinZ: 110,   worldMaxZ: 2653 },
+  AreaVidaria:      { name: 'Vidaria',            image: 'Maps/Map_Vidaria.jpg',           worldMinX: 20,    worldMaxX: 2773,  worldMinZ: -7,    worldMaxZ: 2743 },
+  AreaFaeRealm1:    { name: 'Fae Realm',          image: 'Maps/Map_AreaFaeRealm1.jpg',     worldMinX: 330,   worldMaxX: 2697,  worldMinZ: 56,    worldMaxZ: 3075 },
+  AreaNewbieIsland: { name: 'Anagoge Island',     image: 'Maps/Map_AreaNewbieIsland.jpg',  worldMinX: 145,   worldMaxX: 310,   worldMinZ: 318,   worldMaxZ: 400  },
+  AreaStatehelm:    { name: 'Statehelm',          image: 'Maps/Map_AreaStatehelm.jpg',     worldMinX: -144,  worldMaxX: 1146,  worldMinZ: 142,   worldMaxZ: 1652 },
+  AreaCasino:       { name: 'Red Wing Casino',    image: 'Maps/Map_AreaCasino.jpg',        worldMinX: -136,  worldMaxX: 110,   worldMinZ: 6,     worldMaxZ: 231  },
+  // === Dungeons & Caves ===
+  AreaCave1:        { name: 'Goblin Dungeon',     image: 'Maps/Map_GoblinDungeon.jpg',     worldMinX: -1467, worldMaxX: 2795,  worldMinZ: -1949, worldMaxZ: 700  },
+  AreaCave2:        { name: 'Wolf Cave',          image: 'Maps/Map_WolfCave.jpg',          worldMinX: -2488, worldMaxX: 2368,  worldMinZ: -2782, worldMaxZ: 1725 },
+  AreaMyconianCave: { name: 'Myconian Caverns',   image: 'Maps/Map_MyconianCave.jpg',      worldMinX: -4445, worldMaxX: -273,  worldMinZ: -258,  worldMaxZ: 1171 },
+  AreaFaeRealm1Caves:{ name: 'The Wintertide',    image: 'Maps/Map_TheWintertide.jpg'                                                                            },
+  AreaGazlukCaves:  { name: 'New Prestonbule',    image: 'Maps/Map_NewPrestonbule.jpg',    worldMinX: -2652, worldMaxX: 2433,  worldMinZ: -2507, worldMaxZ: 2351 },
+  AreaGazlukKeep:   { name: 'Gazluk Keep',        image: 'Maps/FortGazluk1.jpg',           worldMinX: 882,   worldMaxX: 1788,  worldMinZ: 853,   worldMaxZ: 1521 },
+  AreaKurCaves:     { name: 'Sacred Grotto',      image: 'Maps/Map_KurTower.jpg',          worldMinX: 2677,  worldMaxX: 5530,  worldMinZ: 299,   worldMaxZ: 5533 },
+  AreaPovusCaves2:  { name: "Errruka's Cave",     image: 'Maps/Map_PovusCaves_ErrrukasCave.jpg', worldMinX: -60, worldMaxX: 2454, worldMinZ: 954, worldMaxZ: 2573 },
+  AreaSerbuleCaves: { name: 'Ranalon Den',        image: 'Maps/Map_RanalonBase.jpg',       worldMinX: -89,   worldMaxX: 5591,  worldMinZ: -379,  worldMaxZ: 2115 },
+  AreaStatehelmCaves:{ name: 'Statehelm Sewers',  image: 'Maps/Map_StatehelmCaves_SafeHouseA.jpg', worldMinX: -588, worldMaxX: 1157, worldMinZ: -45, worldMaxZ: 734 },
+  AreaSunValeCaves: { name: 'Sun Vale Caves',     image: 'Maps/Map_SunValeCave1.jpg',      worldMinX: -2444, worldMaxX: 2202,  worldMinZ: -369,  worldMaxZ: 2477 },
+  AreaTomb1:        { name: 'Carpal Tunnels',     image: 'Maps/Map_CarpalTunnels.jpg',     worldMinX: -3326, worldMaxX: 1381,  worldMinZ: -427,  worldMaxZ: 675  },
+  AreaPovusCaves:   { name: 'Povus Caves',        image: 'Maps/Map_PovusCaves_Level1.jpg'                                                                        },
+  AreaRahuCaves:    { name: 'Rahu Sewer',         image: 'Maps/Map_RahuSewer.jpg'                                                                                },
+  AreaVidariaCaves: { name: 'Beneath Vidaria',    image: 'Maps/NoMap.png'                                                                                        },
   // === Additional maps (display only) ===
-  _SpiderCave:         { name: 'Spider Cave',         image: 'Maps/Map_SpiderCave.png'                },
-  _SerbuleSewer:       { name: 'Serbule Sewer',       image: 'Maps/Map_SerbuleSewer.png'              },
-  _Labyrinth:          { name: 'Labyrinth',           image: 'Maps/Map_Labyrinth.png'                 },
-  _GoblinTopFloor:     { name: 'Goblin Dungeon (Top)',image: 'Maps/Map_GoblinDungeon_TopFloor.png'    },
-  _KurCourtyard:       { name: 'Kur Courtyard',       image: 'Maps/Map_KurCourtyard.png'              },
-  _DarkChapel:         { name: 'Dark Chapel',         image: 'Maps/Map_DarkChapel.png'                },
-  _Borghild:           { name: 'Borghild',            image: 'Maps/Map_Borghild.png'                  },
-  _FortGazluk2:        { name: 'Fort Gazluk (2)',     image: 'Maps/FortGazluk2.png'                   },
+  _SpiderCave:         { name: 'Spider Cave',         image: 'Maps/Map_SpiderCave.jpg'                },
+  _SerbuleSewer:       { name: 'Serbule Sewer',       image: 'Maps/Map_SerbuleSewer.jpg'              },
+  _Labyrinth:          { name: 'Labyrinth',           image: 'Maps/Map_Labyrinth.jpg'                 },
+  _GoblinTopFloor:     { name: 'Goblin Dungeon (Top)',image: 'Maps/Map_GoblinDungeon_TopFloor.jpg'    },
+  _KurCourtyard:       { name: 'Kur Courtyard',       image: 'Maps/Map_KurCourtyard.jpg'              },
+  _DarkChapel:         { name: 'Dark Chapel',         image: 'Maps/Map_DarkChapel.jpg'                },
+  _Borghild:           { name: 'Borghild',            image: 'Maps/Map_Borghild.jpg'                  },
+  _FortGazluk2:        { name: 'Fort Gazluk (2)',     image: 'Maps/FortGazluk2.jpg'                   },
 };
 
 function worldToMapPct(x, z, cfg) {
-  const px = (x - cfg.worldMinX) / (cfg.worldMaxX - cfg.worldMinX) * 100;
-  const py = (1 - (z - cfg.worldMinZ) / (cfg.worldMaxZ - cfg.worldMinZ)) * 100;
+  let px = (x - cfg.worldMinX) / (cfg.worldMaxX - cfg.worldMinX) * 100;
+  let py = (1 - (z - cfg.worldMinZ) / (cfg.worldMaxZ - cfg.worldMinZ)) * 100;
+  if (cfg.rotate180) { px = 100 - px; py = 100 - py; }
   return { x: Math.max(-2, Math.min(102, px)), y: Math.max(-2, Math.min(102, py)) };
 }
 
-function setMapArea(area) { currentMapArea = area; selectedMapNpcKey = null; renderMapsTab(); }
+function setMapArea(area) { currentMapArea = area; selectedMapNpcKey = null; mapZoom = 1.0; renderMapsTab(); }
 function selectMapNpc(key) { selectedMapNpcKey = (selectedMapNpcKey === key) ? null : key; renderMapsTab(); }
 function toggleMapLandmarks() { mapShowLandmarks = !mapShowLandmarks; renderMapsTab(); }
 function toggleMapLabels() { mapShowNpcLabels = !mapShowNpcLabels; renderMapsTab(); }
@@ -2734,6 +2915,7 @@ function setQuestLocationFilter(loc) {
 }
 function onQuestSearch(v) { questSearchQ = v; renderQuestsTab(); }
 function clearQuestSearch() { questSearchQ = ''; renderQuestsTab(); }
+function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; setMainTab('quests'); }
 
 function goToRecipe(itemName) {
   recipeSearchQ = itemName;
@@ -3290,14 +3472,20 @@ function renderMapsTab() {
   // ── NPC markers ──
   const areaNpcs = Object.entries(NPCS).filter(([, v]) => v.areaName === currentMapArea && v.pos);
   const npcMarkers = areaNpcs.map(([key, npc]) => {
-    const p = worldToMapPct(npc.pos.x, npc.pos.z, cfg);
+    const override = getNpcOverride(currentMapArea, key);
+    const p = override ? {x: override.px, y: override.py} : worldToMapPct(npc.pos.x, npc.pos.z, cfg);
     const favorLevel = char?.charData?.NPCs?.[key]?.FavorLevel || '';
     const fc = FAVOR_COLORS[favorLevel];
     const dotColor = fc ? fc.bar : 'rgba(160,160,160,.7)';
     const sel = selectedMapNpcKey === key ? ' selected' : '';
     const labelClass = mapShowNpcLabels ? ' style="opacity:1"' : '';
-    return `<div class="map-npc-marker${sel}" style="left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%" onclick="selectMapNpc('${key}')" title="${npc.name}">
-      <div class="map-npc-dot" style="background:${dotColor}"></div>
+    const hasOverride = !!override;
+    const overrideDot = hasOverride ? 'outline:2px solid var(--accent);outline-offset:1px;' : '';
+    const interaction = mapCalibrationMode
+      ? `onmousedown="startNpcCalDrag(event,'${key}')" style="cursor:grab;left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%"`
+      : `onclick="selectMapNpc('${key}')" style="left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%"`;
+    return `<div class="map-npc-marker${sel}" data-key="${key}" ${interaction} title="${npc.name}${hasOverride?' (custom position)':''}">
+      <div class="map-npc-dot" style="background:${dotColor};${overrideDot}"></div>
       <div class="map-npc-label"${labelClass}>${npc.name}</div>
     </div>`;
   }).join('');
@@ -3306,11 +3494,17 @@ function renderMapsTab() {
   const areaLandmarks = mapShowLandmarks ? (LANDMARKS[currentMapArea] || []) : [];
   const LANDMARK_COLORS = { MeditationPillar:'#f0c040', TeleportationPlatform:'#40a8f0', Portal:'#d0d0d0' };
   const landmarkMarkers = areaLandmarks.map(lm => {
-    const p = worldToMapPct(lm.x, lm.z, cfg);
+    const override = getLandmarkOverride(currentMapArea, lm.name);
+    const p = override ? {x: override.px, y: override.py} : worldToMapPct(lm.x, lm.z, cfg);
     const color = LANDMARK_COLORS[lm.type] || '#aaa';
     const tip = lm.desc ? `${lm.name}: ${lm.desc}` : lm.name;
-    return `<div class="map-landmark-marker" style="left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%" title="${tip.replace(/"/g,'&quot;')}">
-      <div class="map-landmark-dot" style="background:${color}"></div>
+    const hasOverride = !!override;
+    const overrideDot = hasOverride ? 'outline:2px solid var(--accent);outline-offset:1px;' : '';
+    const interaction = mapCalibrationMode
+      ? `onmousedown="startLandmarkCalDrag(event,${JSON.stringify(lm.name)})" style="cursor:grab;left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%"`
+      : `style="left:${p.x.toFixed(2)}%;top:${p.y.toFixed(2)}%"`;
+    return `<div class="map-landmark-marker" data-lmkey="${lm.name.replace(/"/g,'&quot;')}" ${interaction} title="${tip.replace(/"/g,'&quot;')}${hasOverride?' (custom position)':''}">
+      <div class="map-landmark-dot" style="background:${color};${overrideDot}"></div>
     </div>`;
   }).join('');
 
@@ -3348,16 +3542,32 @@ function renderMapsTab() {
           <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-dim);cursor:pointer">
             <input type="checkbox" ${mapShowNpcLabels?'checked':''} onchange="toggleMapLabels()"> NPC labels
           </label>
+          <div style="display:flex;align-items:center;gap:4px;margin-left:4px">
+            <button onclick="setMapZoom(mapZoom*1.25)" style="padding:2px 7px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" title="Zoom in">＋</button>
+            <button onclick="setMapZoom(mapZoom/1.25)" style="padding:2px 7px;font-size:13px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer" title="Zoom out">－</button>
+            <button onclick="fitMapToWindow()" style="padding:2px 7px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);cursor:pointer" title="Fit to window">⊡ Fit</button>
+            <span style="font-size:10px;color:var(--text-dim);min-width:34px;text-align:center">${Math.round(mapZoom*100)}%</span>
+          </div>
+          ${cfg.worldMinX != null ? `<button onclick="toggleMapCalibration()" style="padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer;border:1px solid ${mapCalibrationMode?'var(--accent)':'var(--border)'};background:${mapCalibrationMode?'rgba(99,179,237,.15)':'var(--bg3)'};color:${mapCalibrationMode?'var(--accent)':'var(--text-dim)'}">🔧 Calibrate</button>` : ''}
         </div>
+        ${mapCalibrationMode ? `
+        <div style="background:rgba(99,179,237,.08);border:1px solid rgba(99,179,237,.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px">
+          <div style="color:var(--accent);font-weight:600;margin-bottom:6px">🔧 Calibration Mode — drag any NPC or landmark to reposition it</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button onclick="exportMapOverrides()" style="padding:2px 8px;font-size:11px;background:var(--bg3);border:1px solid var(--accent);border-radius:3px;color:var(--accent);cursor:pointer">💾 Export pg_map_overrides.json</button>
+            <button onclick="resetNpcOverrides()" style="padding:2px 8px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">Reset NPC positions</button>
+            <button onclick="resetLandmarkOverrides()" style="padding:2px 8px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">Reset landmark positions</button>
+          </div>
+        </div>` : ''}
         <div class="map-outer">
-          <div class="map-container" style="width:900px">
+          <div class="map-container" style="width:${Math.round(getMapBaseWidth()*mapZoom)}px">
             <img src="${cfg.image}" draggable="false" alt="${cfg.name} map">
             ${npcMarkers}
             ${landmarkMarkers}
           </div>
         </div>
         <div style="font-size:10px;color:var(--text-dim);margin-top:6px">
-          Map coordinates calibrated from NPC + landmark data. If markers look off, world bounds can be tuned in MAP_CONFIGS.
+          ${mapCalibrationMode ? 'Drag any NPC or landmark marker to reposition it · Custom positions shown with a blue ring · Saved automatically' : 'Toggle 🔧 Calibrate to drag markers to their correct positions.'}
         </div>
       </div>
 
@@ -3367,6 +3577,7 @@ function renderMapsTab() {
 
     </div>
   </div>`;
+  setupMapScrollHandler();
 }
 
 function renderMapNpcDetail(npcKey, char) {
@@ -3401,7 +3612,7 @@ function renderMapNpcDetail(npcKey, char) {
 
     ${returnableQuests.length ? `
       <div class="map-panel-section">Returnable Quests</div>
-      <div>${returnableQuests.map(q => `<div class="map-quest-item">${q.name}</div>`).join('')}</div>` : ''}
+      <div>${returnableQuests.map(q => `<div class="map-quest-item" onclick="navigateToQuest('${q.name.replace(/'/g,"\\'")}')">${q.name}</div>`).join('')}</div>` : ''}
 
     ${serviceTypes.length ? `
       <div class="map-panel-section">Services</div>
