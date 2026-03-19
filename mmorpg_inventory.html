@@ -1812,6 +1812,35 @@ function toggleAvailWO(woKey) {
 }
 
 let _availWOEntries = null; // cache for toggle re-renders
+let availWOSearchQ = '';
+
+function filterAvailWOs() {
+  availWOSearchQ = document.getElementById('availWOSearch')?.value.toLowerCase() || '';
+  const entries = _availWOEntries;
+  if (!entries) return;
+
+  const bySkill = {};
+  for (const entry of entries) {
+    const skill = entry.woKey.split('_')[0];
+    const recipe = entry.recipe;
+    const name = recipe ? recipe[0] : woKeyToDisplayName(entry.woKey);
+    if (availWOSearchQ && !name.toLowerCase().includes(availWOSearchQ) && !skill.toLowerCase().includes(availWOSearchQ)) continue;
+    if (!bySkill[skill]) bySkill[skill] = [];
+    bySkill[skill].push(entry);
+  }
+
+  const container = document.getElementById('availWOList');
+  if (!container) return;
+  let filtered = 0;
+  let html = '';
+  for (const [skill, skillEntries] of Object.entries(bySkill).sort()) {
+    html += `<div style="font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.12em;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)">${skill}</div>`;
+    for (const entry of skillEntries) { html += renderAvailWOCard(entry); filtered++; }
+  }
+  container.innerHTML = html || '<div style="color:var(--text-dim);padding:16px;font-size:13px">No results</div>';
+  const badge = document.getElementById('availWOBadge');
+  if (badge) badge.textContent = filtered;
+}
 
 function renderAvailableWOsTab() {
   const allChars = characters;
@@ -1860,17 +1889,23 @@ function renderAvailableWOsTab() {
     bySkill[skill].push(entry);
   }
 
-  let html = `<div class="full-panel"><div class="wo-section"><div class="wo-section-title">Available Work Order Scrolls <span class="badge">${entries.length}</span></div>`;
-
+  let skillRows = '';
   for (const [skill, skillEntries] of Object.entries(bySkill).sort()) {
-    html += `<div style="font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.12em;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)">${skill}</div>`;
-    for (const entry of skillEntries) {
-      html += renderAvailWOCard(entry);
-    }
+    skillRows += `<div style="font-family:'Cinzel',serif;font-size:10px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.12em;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)">${skill}</div>`;
+    for (const entry of skillEntries) skillRows += renderAvailWOCard(entry);
   }
 
-  html += '</div></div>';
+  const html = `<div class="full-panel"><div class="wo-section">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="wo-section-title" style="margin:0">Available Work Order Scrolls <span id="availWOBadge" class="badge">${entries.length}</span></div>
+      <input id="availWOSearch" type="search" placeholder="Search…" value="${availWOSearchQ}"
+        style="flex:1;min-width:160px;max-width:280px;padding:4px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)"
+        oninput="filterAvailWOs()">
+    </div>
+    <div id="availWOList">${skillRows}</div>
+  </div></div>`;
   document.getElementById('appContent').innerHTML = html;
+  if (availWOSearchQ) filterAvailWOs();
 }
 
 function renderAvailWOCard(entry) {
