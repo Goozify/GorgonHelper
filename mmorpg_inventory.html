@@ -2692,9 +2692,16 @@ function buildRecipeRows(displayList, allRecipeKeys) {
     if (dataLoaded.npcs && npcSources.length > 0) {
       const npcDetails = npcSources.map(s => {
         const npc = NPCS[s.npc]; if (!npc) return '';
-        const trainingService = npc.services?.find(sv => sv.type === 'Training');
-        const reqFavor = trainingService?.favor || '—';
-        return `<span style="font-size:10px;color:var(--text-dim)">${npc.name}: <span style="color:var(--text)">${npc.area}</span> · favor needed: <span style="color:${FAVOR_COLOR(reqFavor)}">${reqFavor}</span></span>`;
+        // For Training, use per-recipe favor from NPC_TRAINING; fall back to service-level favor
+        const perRecipeEntry = s.t === 'Training' && dataLoaded.npc_training
+          ? NPC_TRAINING[s.npc]?.find(e => e.recipeKey === k) : null;
+        const reqFavor = perRecipeEntry?.favor
+          || npc.services?.find(sv => sv.type === 'Training' || sv.type === 'HangOut')?.favor
+          || '—';
+        const favorLabel = FAVOR_LABELS[reqFavor] || reqFavor;
+        const costStr = perRecipeEntry?.cost != null
+          ? ` · <span style="color:var(--gold)">${perRecipeEntry.cost.toLocaleString()} 🪙</span>` : '';
+        return `<span style="font-size:10px;color:var(--text-dim)">${npc.name}: <span style="color:var(--text)">${npc.area}</span> · favor needed: <span style="color:${FAVOR_COLOR(reqFavor)}">${favorLabel}</span>${costStr}</span>`;
       }).filter(Boolean).join('<br>');
       if (npcDetails) npcDetailHtml = `<div style="margin-top:3px">${npcDetails}</div>`;
     }
