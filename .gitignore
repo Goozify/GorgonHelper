@@ -4,6 +4,7 @@ Thumbs.db
 
 # Temporary / tool output
 api-result.xml
+scrape_training.py
 
 # Game exports (auto-generated, no need to track)
 Character_*.json
@@ -12,3 +13,4 @@ pg_landmarks.zip
 
 .claude/
 Original/
+Originals/
