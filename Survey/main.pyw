@@ -10,6 +10,11 @@ def main():
     app.setApplicationName("PG Survey Helper")
     app.setStyle("Fusion")
 
+    # Prevent Qt from quitting the app when an overlay window is closed/hidden.
+    # Without this, closing the RegionSelector (or any overlay) would stop
+    # qasync's event loop with "Event loop stopped before Future completed".
+    app.setQuitOnLastWindowClosed(False)
+
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 

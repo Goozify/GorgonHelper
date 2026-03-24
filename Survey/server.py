@@ -119,6 +119,8 @@ class SurveyServer:
                     pass
         except websockets.ConnectionClosed:
             pass
+        except Exception:
+            log.exception("Unhandled error in WebSocket handler")
         finally:
             self._clients.discard(ws)
             log.info("Browser disconnected (%d remaining)", len(self._clients))
