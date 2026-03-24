@@ -4190,11 +4190,11 @@ function renderSurveyTab() {
       </div>
       <!-- Settings panel -->
       <div style="border-top:1px solid var(--border);background:var(--bg2)">
-        <div onclick="document.getElementById('surveySettings').style.display=document.getElementById('surveySettings').style.display==='none'?'':'none'"
+        <div onclick="const s=document.getElementById('surveySettings');s.style.display=s.style.display==='flex'?'none':'flex'"
              style="padding:8px 16px;cursor:pointer;font-family:'Cinzel',serif;font-size:11px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center">
           <span>⚙ Settings</span><span style="font-size:10px">▾</span>
         </div>
-        <div id="surveySettings" style="display:none;padding:12px 16px 16px;display:flex;flex-direction:column;gap:14px">
+        <div id="surveySettings" style="display:none;padding:12px 16px 16px;flex-direction:column;gap:14px">
           ${['inventory','map'].map(purpose => {
             const isInv = purpose === 'inventory';
             const cfg   = isInv ? (surveyConfig.inventory || {}) : (surveyConfig.map_capture || {});
