@@ -14,3 +14,10 @@ pg_landmarks.zip
 .claude/
 Original/
 Originals/
+
+# Python
+__pycache__/
+*.pyc
+
+# Survey runtime data (config, saved state)
+Survey/data/
