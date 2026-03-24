@@ -4217,19 +4217,6 @@ function renderSurveyTab() {
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Map region</div>
               <button class="ctx-btn" onclick="surveySend({type:'cmd_capture_screenshot',purpose:'map'})">Select map region on screen</button>
             </div>
-            <div>
-              <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Player position (meters)</div>
-              <div style="display:flex;gap:6px">
-                <input type="number" id="surveyPlayerE" placeholder="East"
-                  value="${surveyConfig.player_east != null ? surveyConfig.player_east : ''}"
-                  style="width:72px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
-                  onchange="surveySend({type:'cmd_update_config',player_east:+this.value})">
-                <input type="number" id="surveyPlayerS" placeholder="South"
-                  value="${surveyConfig.player_south != null ? surveyConfig.player_south : ''}"
-                  style="width:72px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
-                  onchange="surveySend({type:'cmd_update_config',player_south:+this.value})">
-              </div>
-            </div>
           </div>
         </div>
       </div>

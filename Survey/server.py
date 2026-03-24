@@ -75,6 +75,9 @@ class SurveyServer:
         # WebSocket clients
         self._clients: Set[websockets.WebSocketServerProtocol] = set()
 
+        # Screenshot window offset — set during capture, used in _set_region
+        self._screenshot_win_offset: tuple = (0, 0)  # (win_x, win_y) in screen pixels
+
         # Apply saved map region if configured
         if self.config.map_capture.w > 0:
             self.map_overlay.configure_region(
@@ -600,12 +603,53 @@ class SurveyServer:
     # Screenshot capture for region selection
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _find_game_window_rect() -> Optional[tuple]:
+        """Return (left, top, right, bottom) of the Project: Gorgon window, or None."""
+        try:
+            import ctypes
+            import ctypes.wintypes
+            user32 = ctypes.windll.user32
+            found = []
+
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_long)
+
+            def _cb(hwnd, _lParam):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length == 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if "gorgon" in buf.value.lower():
+                    rect = ctypes.wintypes.RECT()
+                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                    found.append((rect.left, rect.top, rect.right, rect.bottom))
+                return True
+
+            user32.EnumWindows(EnumWindowsProc(_cb), 0)
+            return found[0] if found else None
+        except Exception:
+            return None
+
     async def _capture_screenshot(self, ws, purpose: str):
         try:
             from PIL import ImageGrab
-            img = ImageGrab.grab(all_screens=True)
+            win_rect = self._find_game_window_rect()
+            if win_rect:
+                left, top, right, bottom = win_rect
+                # Clamp to non-negative (window may be partially off-screen)
+                left, top = max(left, 0), max(top, 0)
+                img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+                self._screenshot_win_offset = (left, top)
+                log.info("Captured game window %dx%d at (%d, %d)", img.width, img.height, left, top)
+            else:
+                img = ImageGrab.grab(all_screens=True)
+                self._screenshot_win_offset = (0, 0)
+                log.info("Game window not found — captured full desktop %dx%d", img.width, img.height)
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=60)
+            img.save(buf, format="JPEG", quality=70)
             b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             await self._send(ws, {
                 "type": "screenshot",
@@ -623,7 +667,12 @@ class SurveyServer:
 
     async def _set_region(self, msg: dict):
         purpose = msg.get("purpose")
-        x, y, w, h = int(msg["x"]), int(msg["y"]), int(msg["w"]), int(msg["h"])
+        # Coordinates from browser are relative to the captured image;
+        # add the window offset to get absolute screen coordinates.
+        win_x, win_y = self._screenshot_win_offset
+        x = int(msg["x"]) + win_x
+        y = int(msg["y"]) + win_y
+        w, h = int(msg["w"]), int(msg["h"])
 
         if purpose == "map":
             self.config.map_capture.x = x
