@@ -2779,7 +2779,10 @@ function getRecipeDisplayList() {
   for (const char of characters) Object.keys(char.charData.RecipeCompletions||{}).forEach(k=>allRecipeKeys.add(k));
   let pool = Object.entries(RECIPES);
   if (recipeSkillFilter) pool = pool.filter(([,r])=>r[1]===recipeSkillFilter);
-  if (recipeSearchQ) pool = pool.filter(([,r])=>r[0].toLowerCase().includes(recipeSearchQ.toLowerCase()));
+  if (recipeSearchQ) {
+    const q = recipeSearchQ.toLowerCase();
+    pool = pool.filter(([,r]) => r[0].toLowerCase().includes(q) || (r[5]||'').toLowerCase().includes(q));
+  }
   const known  = pool.filter(([k])=>allRecipeKeys.has(k));
   const locked = pool.filter(([k])=>!allRecipeKeys.has(k));
   let display = recipeShowLocked === 'all' ? pool
@@ -2787,7 +2790,10 @@ function getRecipeDisplayList() {
               : known;
   if (recipeSkillSort) {
     const dir = recipeSkillSort === 'asc' ? 1 : -1;
-    display = [...display].sort(([,a],[,b]) => dir * (a[1]||'').localeCompare(b[1]||''));
+    display = [...display].sort(([,a],[,b]) => {
+      const bySkill = (a[1]||'').localeCompare(b[1]||'');
+      return dir * (bySkill || (a[4]||0) - (b[4]||0));
+    });
   }
   return { known, locked, display, allRecipeKeys };
 }
