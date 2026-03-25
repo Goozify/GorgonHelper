@@ -2831,7 +2831,7 @@ function renderRecipesTab() {
       </select>
       <div class="mode-toggle" id="recipeModToggle">
         <button class="mode-btn ${recipeShowLocked==='known'?'active':''}" id="recipeBtnKnown" onclick="setRecipeLocked('known')">Known (<span id="recipeKnownCount">${known.length}</span>)</button>
-        <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (${known.length+locked.length})</button>
+        <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (<span id="recipeAllCount">${known.length+locked.length}</span>)</button>
         <button class="mode-btn ${recipeShowLocked==='locked'?'active':''}" id="recipeBtnLocked" onclick="setRecipeLocked('locked')">Locked (<span id="recipeLockedCount">${locked.length}</span>)</button>
       </div>
     </div>
@@ -2846,12 +2846,14 @@ function renderRecipesTab() {
   </div>`;
 }
 
-function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount) {
+function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCount) {
   // Update counts
   const kEl = document.getElementById('recipeKnownCount');
   const lEl = document.getElementById('recipeLockedCount');
+  const aEl = document.getElementById('recipeAllCount');
   if (kEl) kEl.textContent = knownCount;
   if (lEl) lEl.textContent = lockedCount;
+  if (aEl) aEl.textContent = allCount ?? (knownCount + lockedCount);
   // Update known/locked/all button active state
   document.getElementById('recipeBtnKnown')?.classList.toggle('active', recipeShowLocked==='known');
   document.getElementById('recipeBtnAll')?.classList.toggle('active', recipeShowLocked==='all');
