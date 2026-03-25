@@ -29,8 +29,10 @@ from ui_region_selector import RegionSelector
 from ui_region_highlighter import RegionHighlighter
 from inventory_click_watcher import InventoryClickWatcher
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [Survey] %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [Survey] %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
+# Set to logging.INFO to suppress debug trace; logging.DEBUG to see full visit flow
+log.setLevel(logging.DEBUG)
 
 WS_HOST = "localhost"
 WS_PORT = 8765
@@ -447,11 +449,15 @@ class SurveyServer:
     # ------------------------------------------------------------------
 
     async def _on_survey_detected(self, item_name: str, east: int, south: int):
+        log.debug("DETECTED  item=%r  rel=(%+d E, %+d S)  pending=%s",
+                  item_name, east, south,
+                  f"#{self._pending_visit_loc.id}" if self._pending_visit_loc else "none")
         if self._setup_complete:
             # Route mode: coordinate hint — only set pending if not already set
             # by a slot double-click. Overwriting causes the wrong location to be
             # marked when surveys are used back-to-back faster than 10 seconds.
             if self._pending_visit_loc is not None:
+                log.debug("DETECTED  skipped (pending already set to #%d)", self._pending_visit_loc.id)
                 return
             east_abs = self.config.player_east + east
             south_abs = self.config.player_south + south
@@ -467,8 +473,13 @@ class SurveyServer:
                     best_dist = d
                     best_loc = loc
             if best_loc and best_dist < 50:
+                log.debug("DETECTED  coord match → #%d %r  dist=%.1f  abs=(%+d E, %+d S)",
+                          best_loc.id, best_loc.item_name, best_dist, east_abs, south_abs)
                 self._pending_visit_loc = best_loc
                 self._reset_pending_timeout()
+            else:
+                log.debug("DETECTED  no coord match  abs=(%+d E, %+d S)  best_dist=%.1f",
+                          east_abs, south_abs, best_dist if best_loc else float("inf"))
             return
 
         # Setup mode: add new location
@@ -499,6 +510,10 @@ class SurveyServer:
             })
 
     async def _on_survey_completed(self, item_name: str):
+        log.debug("COMPLETED item=%r  pending=%s",
+                  item_name,
+                  f"#{self._pending_visit_loc.id} {self._pending_visit_loc.item_name!r}"
+                  if self._pending_visit_loc else "none (will NOT mark)")
         if not self._setup_complete or self._pending_visit_loc is None:
             return
         loc = self._pending_visit_loc
@@ -524,11 +539,16 @@ class SurveyServer:
     # ------------------------------------------------------------------
 
     async def _on_inv_double_click(self, slot_index: int):
+        log.debug("CLICK     slot=%d  pending=%s",
+                  slot_index,
+                  f"#{self._pending_visit_loc.id}" if self._pending_visit_loc else "none")
         if self._pending_visit_loc is not None:
+            log.debug("CLICK     slot=%d ignored — pending already set", slot_index)
             return
         for loc_id in self._route_id_order:
             loc = self.store.get_by_id(loc_id)
             if loc and not loc.visited and loc.inventory_slot == slot_index:
+                log.debug("CLICK     slot=%d → #%d %r", slot_index, loc.id, loc.item_name)
                 self._pending_visit_loc = loc
                 label = self._current_slot_labels.get(slot_index, "?")
                 self._reset_pending_timeout()
@@ -546,6 +566,8 @@ class SurveyServer:
 
     def _timeout_pending_visit(self):
         if self._pending_visit_loc is not None:
+            log.debug("TIMEOUT   pending #%d %r cleared after 10 s with no chat confirmation",
+                      self._pending_visit_loc.id, self._pending_visit_loc.item_name)
             self._pending_visit_loc = None
             asyncio.ensure_future(self.broadcast({
                 "type": "status",
@@ -557,6 +579,10 @@ class SurveyServer:
     # ------------------------------------------------------------------
 
     async def _mark_location_visited(self, loc: SurveyLocation):
+        log.info("MARK      #%d %r  slot=%s  coords=(%s E, %s S)",
+                 loc.id, loc.item_name, loc.inventory_slot,
+                 f"{loc.east_absolute:+d}" if loc.east_absolute is not None else "?",
+                 f"{loc.south_absolute:+d}" if loc.south_absolute is not None else "?")
         self.store.mark_visited(loc.id)
         consumed_slot = loc.inventory_slot
 
