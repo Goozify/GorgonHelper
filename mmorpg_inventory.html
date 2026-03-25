@@ -385,6 +385,7 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
   <div class="nav-tab" id="nav-favors" onclick="setMainTab('favors')">Favors</div>
   <div class="nav-tab" id="nav-quests" onclick="setMainTab('quests')">Quests</div>
   <div class="nav-tab" id="nav-maps" onclick="setMainTab('maps')">Maps</div>
+  <div class="nav-tab" id="nav-survey" onclick="setMainTab('survey')" style="display:none">Survey</div>
 </div>
 
 <div id="charTabsRow" class="char-tabs"></div>
@@ -405,8 +406,24 @@ let searchMode = 'single';
 let activeVaultFilter = null;
 let showConsolidateOnly = false;
 
+// Survey tab state
+let showSurveyTab = false;
+let surveyWs = null;
+let surveyConnected = false;
+let surveyShuttingDown = false;
+let surveyLocations = [];
+let surveyRouteOrder = [];
+let surveySlotLabels = {};
+let surveySetupActive = false;
+let surveySetupComplete = false;
+let surveyActiveArea = 'AreaSerbule';
+let surveyStatus = '';
+let surveyConfig = {};
+let surveyPlayerMeters = null;
+let surveyCirclePins = [];
+
 // Game data (loaded from files)
-const APP_VERSION = '0.1.3';
+const APP_VERSION = '0.1.4';
 
 let ITEMS = {};           // id -> [name, maxStack]
 let RECIPES = {};         // internalName -> [name, skill, [[ingId,qty]...], [[resId,qty]...]]
@@ -586,6 +603,11 @@ async function attachFolder(h) {
     await saveIconsFolderHandle(iconsH);
     await preloadIconsFromFolder();
   } catch(e) {} // icons folder doesn't exist yet, that's fine
+  // Check for Survey/ subfolder → show Survey tab
+  try {
+    await h.getDirectoryHandle('Survey');
+    setSurveyTabVisible(true, false);
+  } catch(e) {}
   await scanFolder(true);
   startAutoRefresh();
 }
@@ -1104,6 +1126,7 @@ function hideRecipeSourceTooltip() {
 // ═══════════════════════════════════════════════════════════
 function setMainTab(tab) {
   mainTab = tab;
+  if (tab === 'survey') surveyConnect();
   clearExpandedSources();
   expandedAvailWOs.clear();
   expandedWOs.clear();
@@ -1143,6 +1166,7 @@ function renderAll() {
   else if (mainTab === 'quests')     renderQuestsTab();
   else if (mainTab === 'maps')       renderMapsTab();
   else if (mainTab === 'settings')   renderSettingsTab();
+  else if (mainTab === 'survey')     renderSurveyTab();
 }
 
 function renderCharTabs() {
@@ -2161,9 +2185,11 @@ function buildFavorTrainingPanel(npcKey, chars) {
         }
       }
 
+      const kwTag = e.recipeKey && RECIPES[e.recipeKey] ? cookingKwTag(RECIPES[e.recipeKey]) : '';
       html += `<div style="display:flex;align-items:center;gap:0;padding:1px 0">
         ${learnedHtml}
-        <span style="font-size:12px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>
+        <span style="font-size:12px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>${kwTag}
+        <span style="flex:1"></span>
         ${lvlStr}
         ${costStr}
         <span style="font-size:10px;margin-left:8px;padding:1px 6px;border-radius:3px;background:${fc.bg};color:${fc.text};border:1px solid ${fc.border};white-space:nowrap">${favorLabel}</span>
@@ -2381,6 +2407,7 @@ function hideNpcPrefTooltip() {
 // ═══════════════════════════════════════════════════════════
 let recipeSkillFilter = '';
 let recipeSearchQ = '';
+let recipeSkillSort = null; // null | 'asc' | 'desc'
 
 let recipeShowLocked = 'known'; // 'known' | 'locked' | 'all'
 let vaultAreaFilter = '';
@@ -2666,7 +2693,7 @@ function buildRecipeRows(displayList, allRecipeKeys) {
 
     if (!expanded) {
       return `<tr class="recipe-row" style="cursor:pointer" onclick="toggleRecipeRow('${safeK}')">
-        <td><div style="display:flex;align-items:center;gap:4px">${recipeIconHtml}<span class="recipe-name">${rName}</span><span style="font-size:11px;color:var(--text-dim);margin-left:4px">▼</span></div></td>
+        <td><div style="display:flex;align-items:center;gap:4px">${recipeIconHtml}<span class="recipe-name">${rName}</span>${cookingKwTag(r)}<span style="font-size:11px;color:var(--text-dim);margin-left:4px">▼</span></div></td>
         <td><span class="recipe-skill-tag">${rSkill}</span>${skillLevelReq > 0 ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">Lv.${skillLevelReq}</span>` : ''}</td>
         <td style="white-space:nowrap">${charStack}</td>
       </tr>`;
@@ -2734,6 +2761,7 @@ function buildRecipeRows(displayList, allRecipeKeys) {
           <div style="flex:1">
             <div style="display:flex;align-items:center;gap:6px">
               <span class="recipe-name">${rName}</span>
+              ${cookingKwTag(r)}
               <span style="font-size:11px;color:var(--text-dim);cursor:pointer">▲</span>
             </div>
             <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:2px" onclick="event.stopPropagation()">${sourceBadges}</div>
@@ -2753,12 +2781,22 @@ function getRecipeDisplayList() {
   for (const char of characters) Object.keys(char.charData.RecipeCompletions||{}).forEach(k=>allRecipeKeys.add(k));
   let pool = Object.entries(RECIPES);
   if (recipeSkillFilter) pool = pool.filter(([,r])=>r[1]===recipeSkillFilter);
-  if (recipeSearchQ) pool = pool.filter(([,r])=>r[0].toLowerCase().includes(recipeSearchQ.toLowerCase()));
+  if (recipeSearchQ) {
+    const q = recipeSearchQ.toLowerCase();
+    pool = pool.filter(([,r]) => r[0].toLowerCase().includes(q) || (r[5]||'').toLowerCase().includes(q));
+  }
   const known  = pool.filter(([k])=>allRecipeKeys.has(k));
   const locked = pool.filter(([k])=>!allRecipeKeys.has(k));
-  const display = recipeShowLocked === 'all' ? pool
-                : recipeShowLocked === 'locked' ? locked
-                : known;
+  let display = recipeShowLocked === 'all' ? pool
+              : recipeShowLocked === 'locked' ? locked
+              : known;
+  if (recipeSkillSort) {
+    const dir = recipeSkillSort === 'asc' ? 1 : -1;
+    display = [...display].sort(([,a],[,b]) => {
+      const bySkill = (a[1]||'').localeCompare(b[1]||'');
+      return dir * (bySkill || (a[4]||0) - (b[4]||0));
+    });
+  }
   return { known, locked, display, allRecipeKeys };
 }
 
@@ -2793,7 +2831,7 @@ function renderRecipesTab() {
       </select>
       <div class="mode-toggle" id="recipeModToggle">
         <button class="mode-btn ${recipeShowLocked==='known'?'active':''}" id="recipeBtnKnown" onclick="setRecipeLocked('known')">Known (<span id="recipeKnownCount">${known.length}</span>)</button>
-        <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (${known.length+locked.length})</button>
+        <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (<span id="recipeAllCount">${known.length+locked.length}</span>)</button>
         <button class="mode-btn ${recipeShowLocked==='locked'?'active':''}" id="recipeBtnLocked" onclick="setRecipeLocked('locked')">Locked (<span id="recipeLockedCount">${locked.length}</span>)</button>
       </div>
     </div>
@@ -2801,19 +2839,21 @@ function renderRecipesTab() {
       ${display.length===0
         ? `<div class="empty-state" id="recipeEmpty"><div class="icon">📖</div><h3>No recipes found</h3></div>`
         : `<table class="recipe-table">
-            <thead><tr><th>Recipe</th><th>Skill</th><th>Characters</th></tr></thead>
+            <thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th><th>Characters</th></tr></thead>
             <tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody>
           </table>`}
     </div>
   </div>`;
 }
 
-function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount) {
+function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCount) {
   // Update counts
   const kEl = document.getElementById('recipeKnownCount');
   const lEl = document.getElementById('recipeLockedCount');
+  const aEl = document.getElementById('recipeAllCount');
   if (kEl) kEl.textContent = knownCount;
   if (lEl) lEl.textContent = lockedCount;
+  if (aEl) aEl.textContent = allCount ?? (knownCount + lockedCount);
   // Update known/locked/all button active state
   document.getElementById('recipeBtnKnown')?.classList.toggle('active', recipeShowLocked==='known');
   document.getElementById('recipeBtnAll')?.classList.toggle('active', recipeShowLocked==='all');
@@ -2828,12 +2868,14 @@ function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount) {
     wrap.innerHTML = `<div class="empty-state" id="recipeEmpty"><div class="icon">📖</div><h3>No recipes found</h3></div>`;
     return;
   }
+  const thEl = document.getElementById('recipeSkillTh');
+  if (thEl) thEl.textContent = `Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}`;
   const tbody = document.getElementById('recipeTableBody');
   if (tbody) {
     tbody.innerHTML = buildRecipeRows(display, allRecipeKeys);
   } else {
     // Table didn't exist before (was showing empty state), rebuild fully
-    wrap.innerHTML = `<table class="recipe-table"><thead><tr><th>Recipe</th><th>Skill</th><th>Characters</th></tr></thead><tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody></table>`;
+    wrap.innerHTML = `<table class="recipe-table"><thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th><th>Characters</th></tr></thead><tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody></table>`;
   }
 }
 
@@ -2854,6 +2896,17 @@ function onRecipeSearch(v) {
 }
 function clearRecipeSearch() { recipeSearchQ = ''; renderRecipesTab(); }
 function onRecipeSkillFilter(v) { recipeSkillFilter = v; renderRecipesTab(); }
+function cycleRecipeSkillSort() {
+  recipeSkillSort = recipeSkillSort === null ? 'asc' : recipeSkillSort === 'asc' ? 'desc' : null;
+  const { known, locked, display, allRecipeKeys } = getRecipeDisplayList();
+  updateRecipeBody(display, allRecipeKeys, known.length, locked.length);
+}
+function cookingKwTag(r) {
+  const kw = r[5];
+  if (!kw) return '';
+  const isMeal = kw === 'Meal';
+  return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid ${isMeal?'#7a9e6a':'#c4a24a'};background:${isMeal?'rgba(122,158,106,.15)':'rgba(196,162,74,.15)'};color:${isMeal?'#8fbb7a':'#d4b45a'};font-family:sans-serif;letter-spacing:.03em;vertical-align:middle;margin-left:5px">${kw}</span>`;
+}
 
 // ═══════════════════════════════════════════════════════════
 // STORAGE VAULTS TAB
@@ -3515,6 +3568,32 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+    <div class="settings-title">Survey Helper</div>
+    <div class="settings-row" style="margin-top:8px">
+      <div>
+        <div class="settings-label">Show Survey tab</div>
+        <div class="settings-meta">Enables the Survey tab for the in-game Surveying skill (connects to ws://localhost:8765)</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" ${showSurveyTab?'checked':''} onchange="setSurveyTabVisible(this.checked, true)" style="width:16px;height:16px;cursor:pointer">
+      </label>
+    </div>
+    <div class="settings-row" style="margin-top:12px;align-items:flex-start">
+      <div style="flex:1">
+        <div class="settings-label">Chat logs folder</div>
+        <div class="settings-meta">Folder containing Chat-*.log files. Restart setup after changing.</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-left:16px">
+        <input type="text" id="settingsChatLogDir"
+          value="${surveyConfig.chat_log_dir || ''}"
+          placeholder="C:\\...\\ChatLogs"
+          style="width:280px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:12px;font-family:monospace">
+        <button class="ctx-btn" onclick="const v=document.getElementById('settingsChatLogDir').value.trim();if(v){surveySend({type:'cmd_update_config',chat_log_dir:v});showToast('Chat log folder saved');}">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">Version</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
       <span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:3px 9px;color:var(--gold)">App v${APP_VERSION}</span>
@@ -3944,6 +4023,483 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SURVEY TAB
+// ═══════════════════════════════════════════════════════════
+
+const SURVEY_WS_URL = 'ws://localhost:8765';
+
+function setSurveyTabVisible(visible, saveToStorage = true) {
+  showSurveyTab = visible;
+  const el = document.getElementById('nav-survey');
+  if (el) el.style.display = visible ? '' : 'none';
+  if (saveToStorage) localStorage.setItem('showSurveyTab', visible ? '1' : '0');
+  if (visible) surveyConnect();
+  if (mainTab === 'settings') renderSettingsTab();
+}
+
+function surveyConnect() {
+  if (!showSurveyTab) return;
+  if (surveyWs && surveyWs.readyState <= 1) return; // already open or connecting
+  try {
+    surveyWs = new WebSocket(SURVEY_WS_URL);
+    surveyWs.onopen = () => {
+      surveyConnected = true;
+      if (mainTab === 'survey') renderSurveyTab();
+    };
+    surveyWs.onclose = () => {
+      surveyConnected = false;
+      surveyWs = null;
+      if (mainTab === 'survey') renderSurveyTab();
+      if (showSurveyTab && !surveyShuttingDown) setTimeout(surveyConnect, 3000);
+      surveyShuttingDown = false;
+    };
+    surveyWs.onerror = () => {};
+    surveyWs.onmessage = e => { try { surveyHandleMessage(JSON.parse(e.data)); } catch(_) {} };
+  } catch(e) {
+    if (showSurveyTab) setTimeout(surveyConnect, 3000);
+  }
+}
+
+function surveyLaunch() {
+  const btn = document.getElementById('surveyLaunchBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Starting…'; }
+
+  // Fire the custom URL protocol registered by:  py Survey/setup_protocol.py
+  // Works from any browser (file:// or http://), no HTTP server needed.
+  const a = document.createElement('a');
+  a.href = 'gorgon-survey://launch';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Silent fallback: also hit start_server.py endpoint if it happens to be running.
+  fetch('/api/start-survey', { method: 'POST' }).catch(() => {});
+
+  // Poll for WebSocket connection — main.pyw takes ~1-2 s to bind port 8765.
+  showToast('Survey Helper starting…');
+  let attempts = 0;
+  const poll = setInterval(() => {
+    attempts++;
+    surveyConnect();
+    if (surveyConnected || attempts >= 10) {
+      clearInterval(poll);
+      if (btn) { btn.disabled = false; btn.textContent = '▶ Start Survey Helper'; }
+    }
+  }, 1500);
+}
+
+function surveySend(obj) {
+  if (surveyWs && surveyWs.readyState === WebSocket.OPEN) surveyWs.send(JSON.stringify(obj));
+}
+
+function surveyHandleMessage(msg) {
+  switch(msg.type) {
+    case 'shutdown_ack':
+      surveyShuttingDown = true;
+      if (surveyWs) surveyWs.close();
+      return;
+    case 'state_full':
+      surveyLocations = msg.locations || [];
+      surveyRouteOrder = msg.route_id_order || [];
+      surveySlotLabels = msg.slot_labels || {};
+      surveySetupActive = msg.surveying && !msg.setup_complete;
+      surveySetupComplete = msg.setup_complete;
+      surveyActiveArea = msg.active_area || surveyActiveArea;
+      surveyStatus = msg.status || '';
+      surveyConfig = msg.config || surveyConfig;
+      if (msg.player_east != null) surveyConfig.player_east = msg.player_east;
+      if (msg.player_south != null) surveyConfig.player_south = msg.player_south;
+      surveyCirclePins = [];
+      if (mainTab === 'survey') renderSurveyTab();
+      break;
+    case 'survey_detected':
+      surveyLocations.push(msg.location);
+      surveyStatus = msg.status || '';
+      if (mainTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
+      break;
+    case 'survey_duplicate':
+      surveyStatus = msg.status || '';
+      if (mainTab === 'survey') surveyUpdateStatus();
+      break;
+    case 'survey_completed':
+      surveyLocations = msg.locations || surveyLocations;
+      surveySlotLabels = msg.slot_labels || surveySlotLabels;
+      surveyStatus = msg.status || '';
+      if (mainTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
+      break;
+    case 'area_changed':
+      surveyActiveArea = msg.area;
+      surveyStatus = msg.status || '';
+      if (mainTab === 'survey') surveyUpdateStatus();
+      break;
+    case 'route_calculated':
+      surveyLocations = msg.locations || [];
+      surveyRouteOrder = msg.route_id_order || [];
+      surveySlotLabels = msg.slot_labels || {};
+      surveySetupActive = false;
+      surveySetupComplete = true;
+      surveyStatus = msg.status || '';
+      if (mainTab === 'survey') renderSurveyTab();
+      break;
+    case 'player_pos':
+      if (msg.east != null) surveyPlayerMeters = {east: msg.east, south: msg.south};
+      if (mainTab === 'survey') surveyDrawCanvas();
+      break;
+    case 'circle_pin_added':
+      surveyCirclePins.push({px: msg.pixel_x, py: msg.pixel_y});
+      if (mainTab === 'survey') surveyDrawCanvas();
+      break;
+    case 'status':
+    case 'error':
+    case 'pong':
+      if (msg.message) surveyStatus = msg.message;
+      if (mainTab === 'survey') surveyUpdateStatus();
+      break;
+  }
+}
+
+function surveyUpdateStatus() {
+  const el = document.getElementById('surveyStatusMsg');
+  if (el) el.textContent = surveyStatus;
+}
+
+// ── Survey tab render ──────────────────────────────────────
+
+function renderSurveyTab() {
+  const el = document.getElementById('appContent');
+  if (!el) return;
+
+  if (!surveyConnected) {
+    el.innerHTML = `
+<div style="max-width:640px;margin:60px auto;padding:0 20px;text-align:center">
+  <div style="font-size:48px;margin-bottom:16px;opacity:.4">⬡</div>
+  <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--gold);margin-bottom:12px">Survey Helper Not Running</div>
+  <div style="color:var(--text-dim);font-size:13px;line-height:1.7;margin-bottom:24px">
+    The Survey Helper is a Python background process that watches your game's chat log,
+    highlights inventory slots, and shows the optimal route overlay on your game map.
+  </div>
+  <button id="surveyLaunchBtn" class="sync-btn" onclick="surveyLaunch()" style="font-size:14px;padding:10px 28px;background:var(--gold-dim);border-color:var(--gold);color:var(--gold);margin-bottom:16px">
+    ▶ Start Survey Helper
+  </button>
+  <div style="color:var(--text-dim);font-size:11px;margin-bottom:20px">
+    Launches <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Survey/main.pyw</code> silently in the background.
+    To stop it, use the <strong style="color:var(--text)">⏹ Stop Server</strong> button in Survey → ⚙ Settings.<br><br>
+    <strong style="color:var(--text)">First-time setup:</strong> run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py</code> once.<br>
+    This registers a <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> custom URL protocol under
+    <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">HKCU\Software\Classes\gorgon-survey</code> in the Windows registry,
+    pointing to <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">pythonw.exe Survey\main.pyw</code>.
+    No admin rights required. To undo: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py remove</code>
+  </div>
+  <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Or start manually:</div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 18px;font-family:monospace;font-size:13px;color:var(--gold);cursor:pointer;user-select:all;display:inline-block" onclick="navigator.clipboard?.writeText('py main.pyw');showToast('Copied!')">
+      py main.pyw
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--text-dim);margin-top:16px">
+    Connecting to ws://localhost:8765 — retrying automatically every 3 s
+  </div>
+</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+<div style="display:flex;flex-direction:column;height:calc(100vh - 100px)">
+
+  <!-- Toolbar -->
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">
+    ${!surveySetupActive
+      ? `<button class="sync-btn" onclick="surveySend({type:'cmd_start_setup'})" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">▶ Setup Surveying</button>`
+      : `<button class="sync-btn danger" onclick="surveySend({type:'cmd_stop_setup'})">⏹ Stop Setup</button>`
+    }
+    <button class="sync-btn" onclick="surveySend({type:'cmd_recalculate_route'})">↺ Recalculate Route</button>
+    <button class="sync-btn" onclick="surveySend({type:'cmd_clear_area'})" style="color:var(--text-dim)">✕ Clear Area</button>
+  </div>
+
+  <!-- Body -->
+  <div style="display:flex;flex:1;overflow:hidden">
+
+    <!-- Left: survey list -->
+    <div style="width:280px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:10px 0">
+      <div id="surveyList"></div>
+    </div>
+
+    <!-- Right: canvas + settings -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <div style="flex:1;position:relative;min-height:0">
+        <canvas id="surveyCanvas" style="width:100%;height:100%;display:block"></canvas>
+      </div>
+      <!-- Settings panel -->
+      <div style="border-top:1px solid var(--border);background:var(--bg2)">
+        <div onclick="const s=document.getElementById('surveySettings');s.style.display=s.style.display==='flex'?'none':'flex'"
+             style="padding:8px 16px;cursor:pointer;font-family:'Cinzel',serif;font-size:11px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center">
+          <span>⚙ Settings</span><span style="font-size:10px">▾</span>
+        </div>
+        <div id="surveySettings" style="display:none;padding:12px 16px 16px;flex-direction:column;gap:14px">
+          <div style="display:flex;justify-content:flex-end;padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
+            <button class="ctx-btn" style="color:#c0392b;border-color:#c0392b"
+              onclick="surveySend({type:'cmd_shutdown'});showToast('Survey Helper stopped')">
+              ⏹ Stop Server
+            </button>
+          </div>
+          ${['inventory','map'].map(purpose => {
+            const isInv = purpose === 'inventory';
+            const cfg   = isInv ? (surveyConfig.inventory || {}) : (surveyConfig.map_capture || {});
+            const fields = isInv
+              ? [{k:'screen_x',  lbl:'X'}, {k:'screen_y',    lbl:'Y'}, {k:'slot_width', lbl:'W'}, {k:'slot_height',lbl:'H'}]
+              : [{k:'x',         lbl:'X'}, {k:'y',            lbl:'Y'}, {k:'w',          lbl:'W'}, {k:'h',          lbl:'H'}];
+            const label = isInv ? 'Inventory region (first slot)' : 'Map region';
+            const btnTxt = isInv ? 'Select first slot on screen' : 'Select map region on screen';
+            return `<div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${label}</div>
+              <button class="ctx-btn" onclick="surveySend({type:'cmd_capture_screenshot',purpose:'${purpose}'})">⊞ ${btnTxt}</button>
+              <div style="display:flex;gap:5px;margin-top:7px">
+                ${fields.map(({k, lbl}) => `
+                <label style="display:flex;flex-direction:column;gap:2px;align-items:center">
+                  <span style="font-size:9px;color:var(--text-dim);letter-spacing:.05em">${lbl}</span>
+                  <input type="number" value="${cfg[k] ?? 0}"
+                    style="width:60px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:11px;text-align:right"
+                    onfocus="surveyRegionFocus('${purpose}')"
+                    onblur="surveyRegionBlur()"
+                    oninput="surveyRegionInput('${purpose}','${k}',+this.value)">
+                </label>`).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Status bar -->
+  <div style="padding:5px 16px;background:var(--bg2);border-top:1px solid var(--border);font-size:11px;color:var(--text-dim);min-height:24px">
+    <span id="surveyStatusMsg">${surveyStatus}</span>
+  </div>
+
+</div>`;
+
+  surveyRenderList();
+  // Size canvas to its container then draw
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('surveyCanvas');
+    if (canvas) {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      surveyDrawCanvas();
+    }
+  });
+}
+
+// ── Survey list ───────────────────────────────────────────
+
+function surveyRenderList() {
+  const el = document.getElementById('surveyList');
+  if (!el) return;
+
+  if (!surveyLocations.length) {
+    el.innerHTML = `<div style="padding:20px 16px;color:var(--text-dim);font-size:12px;text-align:center">
+      ${surveySetupActive ? 'Use survey items in-game to add locations…' : 'No locations yet'}
+    </div>`;
+    return;
+  }
+
+  // Build route-number lookup: location id → route number
+  const routeNum = {};
+  surveyRouteOrder.forEach((id, i) => { routeNum[id] = i + 1; });
+
+  // Sort: unvisited in route order first, then visited
+  const unvisited = surveyLocations.filter(l => !l.visited).sort((a,b) => (routeNum[a.id]||99) - (routeNum[b.id]||99));
+  const visited   = surveyLocations.filter(l =>  l.visited);
+  const sorted = [...unvisited, ...visited];
+
+  el.innerHTML = sorted.map(loc => {
+    const num = routeNum[loc.id] || '–';
+    const ew = (loc.east_absolute||0) >= 0 ? 'E' : 'W';
+    const ns = (loc.south_absolute||0) >= 0 ? 'S' : 'N';
+    const ea = Math.abs(loc.east_absolute||0).toFixed(0);
+    const sa = Math.abs(loc.south_absolute||0).toFixed(0);
+    return `<div onclick="surveySend({type:'cmd_mark_visited',location_id:${loc.id}})"
+      style="display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border);opacity:${loc.visited?'.45':'1'}"
+      onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background=''">
+      <span style="font-family:'Cinzel',serif;font-size:11px;color:${loc.visited?'var(--text-dim)':'var(--gold)'};min-width:22px;text-align:right">#${num}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${loc.visited?'var(--text-dim)':'var(--text)'}">${loc.item_name}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${ea}${ew}, ${sa}${ns}</div>
+      </div>
+      ${loc.visited ? '<span style="color:#4c4;font-size:13px">✓</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Survey canvas ─────────────────────────────────────────
+
+function surveyDrawCanvas() {
+  const canvas = document.getElementById('surveyCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  if (!W || !H) return;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a1f';
+  ctx.fillRect(0, 0, W, H);
+
+  const locs = surveyLocations.filter(l => l.east_absolute != null);
+
+  if (surveySetupActive && surveyCirclePins.length > 0) {
+    // Setup mode: show crosshairs for detected red circles (pixel coords — just draw in centre area)
+    const pad = 40;
+    surveyCirclePins.forEach((pin, i) => {
+      const x = pad + (i % 5) * ((W - pad*2) / 5);
+      const y = pad + Math.floor(i / 5) * 40;
+      ctx.strokeStyle = '#ffe600cc';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x-12,y); ctx.lineTo(x+12,y); ctx.moveTo(x,y-12); ctx.lineTo(x,y+12); ctx.stroke();
+    });
+    if (!locs.length) {
+      ctx.fillStyle = '#ffffff44';
+      ctx.font = '12px Crimson Pro, serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${surveyCirclePins.length} pin${surveyCirclePins.length!==1?'s':''} detected`, W/2, H-20);
+    }
+  }
+
+  if (!locs.length) {
+    ctx.fillStyle = '#ffffff33';
+    ctx.font = '13px Crimson Pro, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(surveySetupActive ? 'Use survey items — locations will appear here' : 'No locations', W/2, H/2);
+    return;
+  }
+
+  // Compute bounding box
+  let minE = Infinity, maxE = -Infinity, minS = Infinity, maxS = -Infinity;
+  locs.forEach(l => {
+    minE = Math.min(minE, l.east_absolute); maxE = Math.max(maxE, l.east_absolute);
+    minS = Math.min(minS, l.south_absolute); maxS = Math.max(maxS, l.south_absolute);
+  });
+  if (surveyPlayerMeters) {
+    minE = Math.min(minE, surveyPlayerMeters.east); maxE = Math.max(maxE, surveyPlayerMeters.east);
+    minS = Math.min(minS, surveyPlayerMeters.south); maxS = Math.max(maxS, surveyPlayerMeters.south);
+  }
+
+  const pad = 45;
+  const rangeE = maxE - minE || 100;
+  const rangeS = maxS - minS || 100;
+  const scale = Math.min((W - pad*2) / rangeE, (H - pad*2) / rangeS);
+
+  function toCanvas(e, s) {
+    return [pad + (e - minE) * scale, pad + (s - minS) * scale];
+  }
+
+  // Build route-number lookup
+  const routeNum = {};
+  surveyRouteOrder.forEach((id, i) => { routeNum[id] = i + 1; });
+
+  // Unvisited in route order
+  const unvisited = surveyLocations
+    .filter(l => !l.visited && l.east_absolute != null)
+    .sort((a,b) => (routeNum[a.id]||99) - (routeNum[b.id]||99));
+
+  // Draw route lines
+  if (unvisited.length > 1 || (unvisited.length === 1 && surveyPlayerMeters)) {
+    ctx.strokeStyle = '#46a0ff88';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    if (surveyPlayerMeters) {
+      const [px, py] = toCanvas(surveyPlayerMeters.east, surveyPlayerMeters.south);
+      if (unvisited.length) {
+        const [fx, fy] = toCanvas(unvisited[0].east_absolute, unvisited[0].south_absolute);
+        ctx.moveTo(px, py); ctx.lineTo(fx, fy);
+      }
+    }
+    for (let i = 0; i < unvisited.length - 1; i++) {
+      const [ax, ay] = toCanvas(unvisited[i].east_absolute, unvisited[i].south_absolute);
+      const [bx, by] = toCanvas(unvisited[i+1].east_absolute, unvisited[i+1].south_absolute);
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw location markers
+  locs.forEach(loc => {
+    const [x, y] = toCanvas(loc.east_absolute, loc.south_absolute);
+    const num = routeNum[loc.id] || '?';
+    const r = loc.visited ? 9 : 11;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fillStyle = loc.visited ? '#3c7a3c' : '#cc8800';
+    ctx.fill();
+    ctx.strokeStyle = loc.visited ? '#4c4' : '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = loc.visited ? '#aaffaa' : '#000';
+    ctx.font = `bold ${loc.visited?9:10}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), x, y);
+  });
+
+  // Draw player dot
+  if (surveyPlayerMeters) {
+    const [px, py] = toCanvas(surveyPlayerMeters.east, surveyPlayerMeters.south);
+    ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#00c8ffcc';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+// ── Region selector overlay ───────────────────────────────
+
+
+// ------------------------------------------------------------------
+// Survey region highlight helpers
+// ------------------------------------------------------------------
+let _surveyHighlightBlurTimer = null;
+
+function surveyRegionFocus(purpose) {
+  clearTimeout(_surveyHighlightBlurTimer);
+  const inv = surveyConfig.inventory || {};
+  const mc  = surveyConfig.map_capture || {};
+  const r   = purpose === 'inventory'
+    ? { x: inv.screen_x|0, y: inv.screen_y|0, w: inv.slot_width|0, h: inv.slot_height|0 }
+    : { x: mc.x|0,         y: mc.y|0,         w: mc.w|0,           h: mc.h|0 };
+  surveySend({ type: 'cmd_highlight_region', ...r });
+}
+
+function surveyRegionBlur() {
+  // Short delay so switching between sibling inputs doesn't flicker
+  _surveyHighlightBlurTimer = setTimeout(() => {
+    surveySend({ type: 'cmd_hide_highlight' });
+  }, 300);
+}
+
+function surveyRegionInput(purpose, field, value) {
+  clearTimeout(_surveyHighlightBlurTimer);
+  // Update local cache
+  if (purpose === 'inventory') {
+    if (!surveyConfig.inventory) surveyConfig.inventory = {};
+    surveyConfig.inventory[field] = value;
+    const inv = surveyConfig.inventory;
+    surveySend({ type: 'cmd_highlight_region', x: inv.screen_x|0, y: inv.screen_y|0, w: inv.slot_width|0, h: inv.slot_height|0 });
+    surveySend({ type: 'cmd_update_config', inventory: { [field]: value } });
+  } else {
+    if (!surveyConfig.map_capture) surveyConfig.map_capture = {};
+    surveyConfig.map_capture[field] = value;
+    const mc = surveyConfig.map_capture;
+    surveySend({ type: 'cmd_highlight_region', x: mc.x|0, y: mc.y|0, w: mc.w|0, h: mc.h|0 });
+    surveySend({ type: 'cmd_update_config', map_capture: { [field]: value } });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
@@ -3951,6 +4507,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadWOLimits();
   await loadWOCompleted();
   await loadPinnedSkills();
+
+  // Restore survey tab visibility preference
+  if (localStorage.getItem('showSurveyTab') === '1') setSurveyTabVisible(true, false);
 
   // Try restore folder (will also load game data files)
   await tryRestoreFolder();
