@@ -2185,9 +2185,11 @@ function buildFavorTrainingPanel(npcKey, chars) {
         }
       }
 
+      const kwTag = e.recipeKey && RECIPES[e.recipeKey] ? cookingKwTag(RECIPES[e.recipeKey]) : '';
       html += `<div style="display:flex;align-items:center;gap:0;padding:1px 0">
         ${learnedHtml}
-        <span style="font-size:12px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>
+        <span style="font-size:12px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name}</span>${kwTag}
+        <span style="flex:1"></span>
         ${lvlStr}
         ${costStr}
         <span style="font-size:10px;margin-left:8px;padding:1px 6px;border-radius:3px;background:${fc.bg};color:${fc.text};border:1px solid ${fc.border};white-space:nowrap">${favorLabel}</span>
