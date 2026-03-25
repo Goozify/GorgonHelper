@@ -3511,13 +3511,16 @@ function updateIconDownloadProgress(done, total, skipped, failed) {
 
 function updateSettingsStatus() { if (mainTab==='settings') renderSettingsTab(); }
 
+// When opened as file://, relative fetch has no origin — use absolute URL instead.
+const API_BASE = location.protocol === 'file:' ? 'http://localhost:3000' : '';
+
 async function checkForUpdate() {
   const btn = document.getElementById('updateCheckBtn');
   const status = document.getElementById('updateStatus');
   if (btn) btn.disabled = true;
   if (status) status.textContent = 'Checking…';
   try {
-    const res = await fetch('/api/check-update');
+    const res = await fetch(API_BASE + '/api/check-update');
     const data = await res.json();
     if (data.error) {
       if (status) status.innerHTML = `<span style="color:var(--red)">Could not reach GitHub: ${data.error}</span>`;
@@ -3528,7 +3531,7 @@ async function checkForUpdate() {
         <button class="ctx-btn" onclick="doUpdate()" style="margin-left:8px">⬇ Update &amp; Reload</button>`;
     }
   } catch(e) {
-    if (status) status.innerHTML = `<span style="color:var(--text-dim)">start_server.py not running — updates require it</span>`;
+    if (status) status.innerHTML = `<span style="color:var(--text-dim)">Could not reach server — make sure Survey Helper is running (${e.message})</span>`;
   }
   if (btn) btn.disabled = false;
 }
@@ -3537,7 +3540,7 @@ async function doUpdate() {
   const status = document.getElementById('updateStatus');
   if (status) status.innerHTML = `<span style="color:var(--text-dim)">Updating…</span>`;
   try {
-    const res = await fetch('/api/update', { method: 'POST' });
+    const res = await fetch(API_BASE + '/api/update', { method: 'POST' });
     const data = await res.json();
     if (data.status === 'ok') {
       if (status) status.innerHTML = `<span style="color:var(--green)">✓ Updated — reloading…</span>`;
