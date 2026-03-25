@@ -2120,6 +2120,9 @@ const FAVOR_COLORS = {
 
 function setFavorAreaFilter(area) {
   favorAreaFilter = (favorAreaFilter === area) ? '' : area;
+  // Area change must re-render the chips too — clear shell so full re-render runs
+  const ac = document.getElementById('appContent');
+  if (ac) ac.innerHTML = '';
   renderFavorsTab();
 }
 
@@ -2300,10 +2303,26 @@ function renderFavorsTab() {
   _lastFavorRows = buildRows;
   const rows = buildRows(chars, showAll);
 
+  // If shell already exists (user is typing in search), only update the body parts
+  const existingTbodyWrap = document.getElementById('favorTbodyWrap');
+  if (existingTbodyWrap) {
+    existingTbodyWrap.innerHTML = npcs.length === 0
+      ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
+      : `<table class="favor-table">
+          <thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>
+          <tbody id="favorTbody">${rows}</tbody>
+        </table>`;
+    const countEl = document.getElementById('favorCount');
+    if (countEl) countEl.textContent = npcs.length;
+    const clearBtn = document.getElementById('favorClearBtn');
+    if (clearBtn) clearBtn.className = `search-clear ${favorSearchQ ? 'visible' : ''}`;
+    return;
+  }
+
   document.getElementById('appContent').innerHTML = `<div class="full-panel">
     <div class="search-wrap" style="margin-bottom:10px">
       <div class="search-input-wrap">
-        <button class="search-clear ${favorSearchQ?'visible':''}" onclick="clearFavorSearch()">✕</button>
+        <button id="favorClearBtn" class="search-clear ${favorSearchQ?'visible':''}" onclick="clearFavorSearch()">✕</button>
         <input class="search-input" id="favorSearchInput" type="text"
           placeholder="Search NPCs…"
           value="${favorSearchQ.replace(/"/g,'&quot;')}"
@@ -2316,18 +2335,18 @@ function renderFavorsTab() {
       <span class="filter-divider"></span>
       ${areaChips}
     </div>
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Showing <span style="color:var(--gold)">${npcs.length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}
+    <div id="favorCountRow" style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+      Showing <span id="favorCount" style="color:var(--gold)">${npcs.length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}
     </div>
     ${npcs.length === 0
-      ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
-      : `<table class="favor-table">
+      ? `<div id="favorTbodyWrap"><div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div></div>`
+      : `<div id="favorTbodyWrap"><table class="favor-table">
           <thead><tr>
             <th>NPC</th>
             ${showAll ? charHeaders : '<th>Favor</th>'}
           </tr></thead>
           <tbody id="favorTbody">${rows}</tbody>
-        </table>`}
+        </table></div>`}
   </div>`;
 }
 
