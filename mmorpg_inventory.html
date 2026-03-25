@@ -4149,7 +4149,7 @@ function renderSurveyTab() {
   </button>
   <div style="color:var(--text-dim);font-size:11px;margin-bottom:20px">
     Launches <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Survey/main.pyw</code> silently in the background.<br>
-    First-time setup: run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py Survey/setup_protocol.py</code> once to register the launcher.
+    First-time setup: run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py</code> once to register the launcher.
   </div>
   <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Or start manually:</div>
@@ -4197,6 +4197,12 @@ function renderSurveyTab() {
           <span>⚙ Settings</span><span style="font-size:10px">▾</span>
         </div>
         <div id="surveySettings" style="display:none;padding:12px 16px 16px;flex-direction:column;gap:14px">
+          <div style="display:flex;justify-content:flex-end;padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px">
+            <button class="ctx-btn" style="color:#c0392b;border-color:#c0392b"
+              onclick="surveySend({type:'cmd_shutdown'});showToast('Survey Helper stopped')">
+              ⏹ Stop Server
+            </button>
+          </div>
           ${['inventory','map'].map(purpose => {
             const isInv = purpose === 'inventory';
             const cfg   = isInv ? (surveyConfig.inventory || {}) : (surveyConfig.map_capture || {});

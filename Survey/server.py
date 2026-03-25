@@ -231,6 +231,10 @@ class SurveyServer:
             await self._update_config(msg)
         elif t == "cmd_ping":
             await self._send(ws, {"type": "pong"})
+        elif t == "cmd_shutdown":
+            await self._send(ws, {"type": "shutdown_ack"})
+            logging.info("Shutdown requested by browser")
+            QApplication.quit()
 
     # ------------------------------------------------------------------
     # Setup / Stop

@@ -1,12 +1,12 @@
 """
-setup_protocol.py — run once to register the gorgon-survey:// URL protocol.
+setup_survey.py — run once to register the gorgon-survey:// URL protocol.
 
 After running this, any browser on this machine can launch Survey/main.pyw
-by navigating to  gorgon-survey://launch  — no HTTP server required.
+by clicking "Start Survey Helper" in the Gorgon Helper — no HTTP server required.
 
 Usage:
-    py setup_protocol.py          # register
-    py setup_protocol.py remove   # unregister
+    py setup_survey.py          # register
+    py setup_survey.py remove   # unregister
 """
 
 import os
@@ -14,7 +14,7 @@ import sys
 import winreg
 
 PROTOCOL   = "gorgon-survey"
-SCRIPT     = os.path.abspath(os.path.join(os.path.dirname(__file__), "main.pyw"))
+SCRIPT     = os.path.abspath(os.path.join(os.path.dirname(__file__), "Survey", "main.pyw"))
 PYTHONW    = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
 REG_ROOT   = winreg.HKEY_CURRENT_USER
 REG_PATH   = rf"Software\Classes\{PROTOCOL}"
@@ -36,13 +36,11 @@ def register() -> None:
         winreg.SetValue(key, "", winreg.REG_SZ, cmd)
 
     print(f"Registered  {PROTOCOL}://  →  {cmd}")
-    print(f"You can now click '▶ Start Survey Helper' in the browser.")
+    print("You can now click '▶ Start Survey Helper' in the browser.")
 
 
 def remove() -> None:
-    import shutil
     try:
-        # winreg can't delete trees, so use reg.exe
         os.system(f'reg delete "HKCU\\Software\\Classes\\{PROTOCOL}" /f')
         print(f"Unregistered {PROTOCOL}://")
     except Exception as e:
