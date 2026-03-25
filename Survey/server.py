@@ -6,6 +6,7 @@ screen capture, mouse hooks, chat tailing) stays in Python; state and
 events stream to the browser over ws://localhost:8765.
 """
 import asyncio
+import ctypes
 import time
 import http.server
 import json
