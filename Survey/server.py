@@ -197,6 +197,7 @@ class SurveyServer:
         self._auto_use_event: Optional[asyncio.Event] = None   # wakes on survey_detected
         self._auto_use_pin_event: Optional[asyncio.Event] = None  # wakes on circle_pin_added
         self._hotkey: Optional[KeyboardHotkey] = None
+        self._single_use_hotkey: Optional[KeyboardHotkey] = None
 
         # Region selector overlay (keep reference so Qt doesn't GC it)
         self._region_selector: Optional[RegionSelector] = None
@@ -226,13 +227,20 @@ class SurveyServer:
             lambda slot: asyncio.ensure_future(self._on_inv_double_click(slot))
         )
 
-        # Global keyboard hotkey for auto-use
+        # Global keyboard hotkeys
         self._hotkey = KeyboardHotkey(
             self.config.auto_use_hotkey_vk,
             lambda: asyncio.ensure_future(self._on_hotkey_press()),
         )
         self._hotkey.start()
         log.info("Auto-use hotkey registered (VK 0x%02X)", self.config.auto_use_hotkey_vk)
+
+        self._single_use_hotkey = KeyboardHotkey(
+            self.config.single_use_hotkey_vk,
+            lambda: asyncio.ensure_future(self._on_single_use_press()),
+        )
+        self._single_use_hotkey.start()
+        log.info("Single-use hotkey registered (VK 0x%02X)", self.config.single_use_hotkey_vk)
 
         log.info("Starting WebSocket server on ws://%s:%d", WS_HOST, WS_PORT)
         async with websockets.serve(self._handle_client, WS_HOST, WS_PORT):
@@ -307,6 +315,7 @@ class SurveyServer:
                 "map_capture": asdict(self.config.map_capture),
                 "chat_log_dir": self.config.chat_log_dir,
                 "auto_use_hotkey_vk": self.config.auto_use_hotkey_vk,
+                "single_use_hotkey_vk": self.config.single_use_hotkey_vk,
             },
             "locations": [_loc_to_dict(l) for l in locs],
             "route_id_order": self._route_id_order,
@@ -605,8 +614,8 @@ class SurveyServer:
     async def _mark_location_visited(self, loc: SurveyLocation):
         log.info("MARK      #%d %r  slot=%s  coords=(%s E, %s S)",
                  loc.id, loc.item_name, loc.inventory_slot,
-                 f"{loc.east_absolute:+d}" if loc.east_absolute is not None else "?",
-                 f"{loc.south_absolute:+d}" if loc.south_absolute is not None else "?")
+                 f"{loc.east_absolute:+.0f}" if loc.east_absolute is not None else "?",
+                 f"{loc.south_absolute:+.0f}" if loc.south_absolute is not None else "?")
         self.store.mark_visited(loc.id)
         consumed_slot = loc.inventory_slot
 
@@ -665,6 +674,15 @@ class SurveyServer:
             await self.broadcast({"type": "status", "message": "Auto-use cancelled"})
         else:
             asyncio.ensure_future(self._auto_use_surveys())
+
+    async def _on_single_use_press(self):
+        """Use the current highlighted survey slot once (setup or route mode)."""
+        if not self._surveying or self._auto_use_active:
+            return
+        slot = self._current_scan_slot
+        x, y = self._slot_screen_center(slot)
+        log.debug("SINGLE-USE  clicking slot %d at (%d, %d)", slot, x, y)
+        self._simulate_double_click(x, y)
 
     async def _auto_use_surveys(self):
         """Simulate double-clicking each survey slot in sequence until timeout."""
@@ -942,5 +960,11 @@ class SurveyServer:
             if self._hotkey:
                 self._hotkey.update_vk(vk)
             log.info("Auto-use hotkey changed to VK 0x%02X", vk)
+        if "single_use_hotkey_vk" in msg:
+            vk = int(msg["single_use_hotkey_vk"])
+            self.config.single_use_hotkey_vk = vk
+            if self._single_use_hotkey:
+                self._single_use_hotkey.update_vk(vk)
+            log.info("Single-use hotkey changed to VK 0x%02X", vk)
         self.config.save()
         await self.broadcast({"type": "status", "message": "Settings saved"})

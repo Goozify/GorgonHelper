@@ -4311,17 +4311,32 @@ function renderSurveyTab() {
               ⏹ Stop Server
             </button>
           </div>
-          <div>
-            <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Auto-use hotkey</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <select style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
-                onchange="surveySend({type:'cmd_update_config',auto_use_hotkey_vk:+this.value})">
-                ${[['F1',0x70],['F2',0x71],['F3',0x72],['F4',0x73],['F5',0x74],['F6',0x75],
-                   ['F7',0x76],['F8',0x77],['F9',0x78],['F10',0x79],['F11',0x7A],['F12',0x7B]]
-                  .map(([name,vk])=>`<option value="${vk}" ${(surveyConfig.auto_use_hotkey_vk||0x75)===vk?'selected':''}>${name}</option>`)
-                  .join('')}
-              </select>
-              <span style="font-size:11px;color:var(--text-dim)">Press once to start, again to cancel</span>
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Auto-use hotkey</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <select style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
+                  onchange="surveySend({type:'cmd_update_config',auto_use_hotkey_vk:+this.value})">
+                  ${[['F1',0x70],['F2',0x71],['F3',0x72],['F4',0x73],['F5',0x74],['F6',0x75],
+                     ['F7',0x76],['F8',0x77],['F9',0x78],['F10',0x79],['F11',0x7A],['F12',0x7B]]
+                    .map(([name,vk])=>`<option value="${vk}" ${(surveyConfig.auto_use_hotkey_vk||0x75)===vk?'selected':''}>${name}</option>`)
+                    .join('')}
+                </select>
+                <span style="font-size:11px;color:var(--text-dim)">Use all — press again to cancel</span>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Single-use hotkey</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <select style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
+                  onchange="surveySend({type:'cmd_update_config',single_use_hotkey_vk:+this.value})">
+                  ${[['F1',0x70],['F2',0x71],['F3',0x72],['F4',0x73],['F5',0x74],['F6',0x75],
+                     ['F7',0x76],['F8',0x77],['F9',0x78],['F10',0x79],['F11',0x7A],['F12',0x7B]]
+                    .map(([name,vk])=>`<option value="${vk}" ${(surveyConfig.single_use_hotkey_vk||0x76)===vk?'selected':''}>${name}</option>`)
+                    .join('')}
+                </select>
+                <span style="font-size:11px;color:var(--text-dim)">Use current highlighted slot once</span>
+              </div>
             </div>
           </div>
           ${['inventory','map'].map(purpose => {
@@ -4332,6 +4347,16 @@ function renderSurveyTab() {
               : [{k:'x',         lbl:'X'}, {k:'y',            lbl:'Y'}, {k:'w',          lbl:'W'}, {k:'h',          lbl:'H'}];
             const label = isInv ? 'Inventory region (first slot)' : 'Map region';
             const btnTxt = isInv ? 'Select first slot on screen' : 'Select map region on screen';
+            const gridInputs = isInv ? `
+              <div style="display:flex;gap:5px;margin-top:5px">
+                ${[['grid_cols','Cols'],['grid_rows','Rows']].map(([k,lbl]) => `
+                <label style="display:flex;flex-direction:column;gap:2px;align-items:center">
+                  <span style="font-size:9px;color:var(--text-dim);letter-spacing:.05em">${lbl}</span>
+                  <input type="number" min="1" max="20" value="${cfg[k] ?? (k==='grid_cols'?6:5)}"
+                    style="width:52px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:11px;text-align:right"
+                    oninput="surveySend({type:'cmd_update_config',inventory:{${k}:+this.value}})">
+                </label>`).join('')}
+              </div>` : '';
             return `<div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${label}</div>
               <button class="ctx-btn" onclick="surveySend({type:'cmd_capture_screenshot',purpose:'${purpose}'})">⊞ ${btnTxt}</button>
@@ -4346,6 +4371,7 @@ function renderSurveyTab() {
                     oninput="surveyRegionInput('${purpose}','${k}',+this.value)">
                 </label>`).join('')}
               </div>
+              ${gridInputs}
             </div>`;
           }).join('')}
         </div>
