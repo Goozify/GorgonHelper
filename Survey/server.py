@@ -676,8 +676,8 @@ class SurveyServer:
             asyncio.ensure_future(self._auto_use_surveys())
 
     async def _on_single_use_press(self):
-        """Use the current highlighted survey slot once (setup or route mode)."""
-        if not self._surveying or self._auto_use_active:
+        """Use the current highlighted survey slot once — only during active setup."""
+        if not self._surveying or self._setup_complete or self._auto_use_active:
             return
         slot = self._current_scan_slot
         x, y = self._slot_screen_center(slot)
@@ -940,6 +940,14 @@ class SurveyServer:
                           "grid_cols", "grid_rows", "slot_gap", "padding_left", "padding_top"):
                 if field in inv_data:
                     setattr(inv, field, int(inv_data[field]))
+            # Resize the overlay window to match the new grid dimensions
+            if inv.screen_x and inv.screen_y:
+                self.inv_overlay.configure(
+                    inv.screen_x, inv.screen_y,
+                    inv.slot_width, inv.slot_height,
+                    inv.grid_cols, inv.grid_rows, inv.slot_gap,
+                    inv.padding_left, inv.padding_top,
+                )
         if "map_capture" in msg:
             mc_data = msg["map_capture"]
             mc = self.config.map_capture
