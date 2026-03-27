@@ -48,8 +48,10 @@ def _find_red_circle(arr: np.ndarray) -> Optional[Tuple[int, int]]:
     # spread ~ radius * 1.41 for a thin ring
     spread = float(np.std(xs) + np.std(ys))
 
-    # Too small -> noise/dot;  too large -> animated (shrinking) frame
-    if spread < 2 or spread > 25:
+    # Too small -> noise/dot;  too large -> animated (shrinking) frame.
+    # Upper limit raised slightly (25->35) to catch circles that are still
+    # shrinking when the scanner fires.
+    if spread < 2 or spread > 35:
         return None
 
     return int(cx), int(cy)
@@ -235,17 +237,24 @@ class GameMapOverlay(QWidget):
     # Player tracking
     # ------------------------------------------------------------------
 
+    def set_fast_scan(self, fast: bool):
+        """Switch between normal (600ms) and fast (120ms) scan interval."""
+        self._timer.setInterval(120 if fast else 600)
+
     def _update_arrow(self):
         self._debug_tick += 1
         if not _PIL_OK or self._map_w <= 0 or self._map_h <= 0:
             self._debug_last_error = f"skip: PIL={_PIL_OK} w={self._map_w} h={self._map_h}"
             return
         try:
+            # Yellow pins (R=255 G=230 B=0) cannot trigger the red-circle mask
+            # (requires G < 100), so we don't need to hide the overlay.
             img = ImageGrab.grab(
                 bbox=(self._map_x, self._map_y,
                       self._map_x + self._map_w,
                       self._map_y + self._map_h)
             )
+
             arr = np.array(img.convert("RGB"))
 
             result = find_player_arrow(arr)
@@ -270,8 +279,15 @@ class GameMapOverlay(QWidget):
                 if circle:
                     cx, cy = circle
                     now = time.time()
+                    # Dup check: same position AND seen recently (<15 s).
+                    # Threshold is 25 px (not strict <15) so that slight OCR
+                    # jitter between fast scans doesn't add phantom extra pins
+                    # that would shift the index-based pin→location assignment.
+                    # Time limit prevents old pins from blocking new surveys
+                    # that happen to land on or near the same map position.
                     is_dup = any(
-                        abs(p[0] - cx) < 15 and abs(p[1] - cy) < 15
+                        abs(p[0] - cx) <= 25 and abs(p[1] - cy) <= 25
+                        and (now - p[2]) < 15.0
                         for p in self._circle_pins
                     )
                     if not is_dup:
@@ -325,8 +341,10 @@ class GameMapOverlay(QWidget):
 
     def _do_paint(self, painter: QPainter):
         if self._setup_active:
-            # --- SETUP MODE: draw crosshairs at detected red-circle positions ---
-            for cpx, cpy, _t in self._circle_pins:
+            # --- SETUP MODE: draw crosshair only at the LATEST detected pin ---
+            # Previous pins are hidden to avoid clutter during rapid auto-use.
+            if self._circle_pins:
+                cpx, cpy, _t = self._circle_pins[-1]
                 pt = QPointF(cpx, cpy)
                 painter.setPen(QPen(QColor(255, 230, 0, 200), 2))
                 painter.setBrush(Qt.NoBrush)

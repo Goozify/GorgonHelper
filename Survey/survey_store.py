@@ -92,6 +92,13 @@ class SurveyStore:
                 self.save()
                 return
 
+    def mark_unvisited(self, loc_id: int):
+        for loc in self.locations:
+            if loc.id == loc_id:
+                loc.visited = False
+                self.save()
+                return
+
     def get_unvisited(self, area: str) -> List[SurveyLocation]:
         return [l for l in self.locations if l.area == area and not l.visited]
 

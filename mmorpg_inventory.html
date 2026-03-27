@@ -423,7 +423,7 @@ let surveyPlayerMeters = null;
 let surveyCirclePins = [];
 
 // Game data (loaded from files)
-const APP_VERSION = '0.1.4';
+const APP_VERSION = '0.1.5';
 
 let ITEMS = {};           // id -> [name, maxStack]
 let RECIPES = {};         // internalName -> [name, skill, [[ingId,qty]...], [[resId,qty]...]]
@@ -2120,6 +2120,9 @@ const FAVOR_COLORS = {
 
 function setFavorAreaFilter(area) {
   favorAreaFilter = (favorAreaFilter === area) ? '' : area;
+  // Area change must re-render the chips too — clear shell so full re-render runs
+  const ac = document.getElementById('appContent');
+  if (ac) ac.innerHTML = '';
   renderFavorsTab();
 }
 
@@ -2300,10 +2303,26 @@ function renderFavorsTab() {
   _lastFavorRows = buildRows;
   const rows = buildRows(chars, showAll);
 
+  // If shell already exists (user is typing in search), only update the body parts
+  const existingTbodyWrap = document.getElementById('favorTbodyWrap');
+  if (existingTbodyWrap) {
+    existingTbodyWrap.innerHTML = npcs.length === 0
+      ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
+      : `<table class="favor-table">
+          <thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>
+          <tbody id="favorTbody">${rows}</tbody>
+        </table>`;
+    const countEl = document.getElementById('favorCount');
+    if (countEl) countEl.textContent = npcs.length;
+    const clearBtn = document.getElementById('favorClearBtn');
+    if (clearBtn) clearBtn.className = `search-clear ${favorSearchQ ? 'visible' : ''}`;
+    return;
+  }
+
   document.getElementById('appContent').innerHTML = `<div class="full-panel">
     <div class="search-wrap" style="margin-bottom:10px">
       <div class="search-input-wrap">
-        <button class="search-clear ${favorSearchQ?'visible':''}" onclick="clearFavorSearch()">✕</button>
+        <button id="favorClearBtn" class="search-clear ${favorSearchQ?'visible':''}" onclick="clearFavorSearch()">✕</button>
         <input class="search-input" id="favorSearchInput" type="text"
           placeholder="Search NPCs…"
           value="${favorSearchQ.replace(/"/g,'&quot;')}"
@@ -2316,18 +2335,18 @@ function renderFavorsTab() {
       <span class="filter-divider"></span>
       ${areaChips}
     </div>
-    <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Showing <span style="color:var(--gold)">${npcs.length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}
+    <div id="favorCountRow" style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+      Showing <span id="favorCount" style="color:var(--gold)">${npcs.length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}
     </div>
     ${npcs.length === 0
-      ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
-      : `<table class="favor-table">
+      ? `<div id="favorTbodyWrap"><div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div></div>`
+      : `<div id="favorTbodyWrap"><table class="favor-table">
           <thead><tr>
             <th>NPC</th>
             ${showAll ? charHeaders : '<th>Favor</th>'}
           </tr></thead>
           <tbody id="favorTbody">${rows}</tbody>
-        </table>`}
+        </table></div>`}
   </div>`;
 }
 
@@ -3511,6 +3530,48 @@ function updateIconDownloadProgress(done, total, skipped, failed) {
 
 function updateSettingsStatus() { if (mainTab==='settings') renderSettingsTab(); }
 
+// When opened as file://, relative fetch has no origin — use absolute URL instead.
+const API_BASE = location.protocol === 'file:' ? 'http://localhost:3000' : '';
+
+async function checkForUpdate() {
+  const btn = document.getElementById('updateCheckBtn');
+  const status = document.getElementById('updateStatus');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Checking…';
+  try {
+    const res = await fetch(API_BASE + '/api/check-update');
+    const data = await res.json();
+    if (data.error) {
+      if (status) status.innerHTML = `<span style="color:var(--red)">Could not reach GitHub: ${data.error}</span>`;
+    } else if (data.upToDate) {
+      if (status) status.innerHTML = `<span style="color:var(--green)">✓ Up to date (v${data.local})</span>`;
+    } else {
+      if (status) status.innerHTML = `<span style="color:var(--gold)">Update available: v${data.local} → v${data.remote}</span>
+        <button class="ctx-btn" onclick="doUpdate()" style="margin-left:8px">⬇ Update &amp; Reload</button>`;
+    }
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:var(--text-dim)">Could not reach server — make sure Survey Helper is running (${e.message})</span>`;
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function doUpdate() {
+  const status = document.getElementById('updateStatus');
+  if (status) status.innerHTML = `<span style="color:var(--text-dim)">Updating…</span>`;
+  try {
+    const res = await fetch(API_BASE + '/api/update', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      if (status) status.innerHTML = `<span style="color:var(--green)">✓ Updated — reloading…</span>`;
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      if (status) status.innerHTML = `<span style="color:var(--red)">Update failed: ${data.output}</span>`;
+    }
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
 function renderSettingsTab() {
   const rowsHtml = DATA_FILES.map(df => {
     const loaded = dataLoaded[df.key];
@@ -3601,6 +3662,10 @@ function renderSettingsTab() {
         ? `<span style="font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;color:var(--text-dim)" title="${df.file}">${df.label.replace(' Database','').replace(' Sources','').replace(' Database','')} v${dataVersions[df.key]}</span>`
         : ''
       ).filter(Boolean).join('')}
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+      <button class="ctx-btn" onclick="checkForUpdate()" id="updateCheckBtn">Check for updates</button>
+      <span id="updateStatus" style="font-size:12px;color:var(--text-dim)"></span>
     </div>
   </div>
 
@@ -4093,6 +4158,18 @@ function surveySend(obj) {
   if (surveyWs && surveyWs.readyState === WebSocket.OPEN) surveyWs.send(JSON.stringify(obj));
 }
 
+function surveySetHotkey(id, vkField, modsField) {
+  const sel = document.getElementById('hkSel_' + id);
+  const vk = sel ? +sel.value : 0;
+  if (!vk) return;
+  let mods = 0;
+  [1, 2, 4].forEach(bit => {
+    const cb = document.getElementById('hkMod_' + id + '_' + bit);
+    if (cb && cb.checked) mods |= bit;
+  });
+  surveySend({type: 'cmd_update_config', [vkField]: vk, [modsField]: mods});
+}
+
 function surveyHandleMessage(msg) {
   switch(msg.type) {
     case 'shutdown_ack':
@@ -4123,6 +4200,7 @@ function surveyHandleMessage(msg) {
       if (mainTab === 'survey') surveyUpdateStatus();
       break;
     case 'survey_completed':
+    case 'survey_unmarked':
       surveyLocations = msg.locations || surveyLocations;
       surveySlotLabels = msg.slot_labels || surveySlotLabels;
       surveyStatus = msg.status || '';
@@ -4132,6 +4210,14 @@ function surveyHandleMessage(msg) {
       surveyActiveArea = msg.area;
       surveyStatus = msg.status || '';
       if (mainTab === 'survey') surveyUpdateStatus();
+      break;
+    case 'setup_stopped':
+      // Sent by server whenever Stop Setup is pressed, even with 0 locations.
+      // route_calculated may follow immediately if there are locations to route.
+      surveyLocations = msg.locations || [];
+      surveySetupActive = false;
+      surveySetupComplete = true;
+      if (mainTab === 'survey') renderSurveyTab();
       break;
     case 'route_calculated':
       surveyLocations = msg.locations || [];
@@ -4184,7 +4270,10 @@ function renderSurveyTab() {
   </button>
   <div style="color:var(--text-dim);font-size:11px;margin-bottom:20px">
     Launches <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Survey/main.pyw</code> silently in the background.
-    To stop it, use the <strong style="color:var(--text)">⏹ Stop Server</strong> button in Survey → ⚙ Settings.<br><br>
+    It starts both the <strong style="color:var(--text)">WebSocket server</strong> (port 8765) and the
+    <strong style="color:var(--text)">HTTP file server</strong> (port 3000) — no need to run
+    <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">start_server.py</code> separately.
+    To stop everything, use the <strong style="color:var(--text)">⏹ Stop Server</strong> button in Survey → ⚙ Settings.<br><br>
     <strong style="color:var(--text)">First-time setup:</strong> run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py</code> once.<br>
     This registers a <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> custom URL protocol under
     <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">HKCU\Software\Classes\gorgon-survey</code> in the Windows registry,
@@ -4243,6 +4332,56 @@ function renderSurveyTab() {
               ⏹ Stop Server
             </button>
           </div>
+          <div style="display:flex;gap:20px;flex-wrap:wrap">
+            ${[
+              ...(surveyConfig.debug_auto_use ? [{id:'auto', vkField:'auto_use_hotkey_vk', modsField:'auto_use_hotkey_mods', defVk:0x75, defMods:0, label:'Auto-use hotkey', hint:'Use all — press again to cancel'}] : []),
+              {id:'single',vkField:'single_use_hotkey_vk',  modsField:'single_use_hotkey_mods', defVk:0x76, defMods:0, label:'Single-use hotkey',  hint:'Use current highlighted slot once'},
+            ].map(({id,vkField,modsField,defVk,defMods,label,hint}) => {
+              const curVk   = surveyConfig[vkField]   ?? defVk;
+              const curMods = surveyConfig[modsField] ?? defMods;
+              const HOTKEY_KEYS = [
+                ['F1',0x70],['F2',0x71],['F3',0x72],['F4',0x73],['F5',0x74],['F6',0x75],
+                ['F7',0x76],['F8',0x77],['F9',0x78],['F10',0x79],['F11',0x7A],['F12',0x7B],
+                ['─────',''],
+                ['A',0x41],['B',0x42],['C',0x43],['D',0x44],['E',0x45],['F',0x46],['G',0x47],
+                ['H',0x48],['I',0x49],['J',0x4A],['K',0x4B],['L',0x4C],['M',0x4D],['N',0x4E],
+                ['O',0x4F],['P',0x50],['Q',0x51],['R',0x52],['S',0x53],['T',0x54],['U',0x55],
+                ['V',0x56],['W',0x57],['X',0x58],['Y',0x59],['Z',0x5A],
+                ['─────',''],
+                ['0',0x30],['1',0x31],['2',0x32],['3',0x33],['4',0x34],
+                ['5',0x35],['6',0x36],['7',0x37],['8',0x38],['9',0x39],
+                ['─────',''],
+                ['Num0',0x60],['Num1',0x61],['Num2',0x62],['Num3',0x63],['Num4',0x64],
+                ['Num5',0x65],['Num6',0x66],['Num7',0x67],['Num8',0x68],['Num9',0x69],
+                ['─────',''],
+                ['Delete',0x2E],['Insert',0x2D],['Home',0x24],['End',0x23],
+                ['PgUp',0x21],['PgDn',0x22],['Pause',0x13],
+              ];
+              const modBits = [{bit:1,name:'Shift'},{bit:2,name:'Ctrl'},{bit:4,name:'Alt'}];
+              return `<div>
+                <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${label}</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <select id="hkSel_${id}"
+                    style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
+                    onchange="surveySetHotkey('${id}','${vkField}','${modsField}')">
+                    ${HOTKEY_KEYS.map(([name,vk])=>vk===''
+                      ? `<option disabled>${name}</option>`
+                      : `<option value="${vk}" ${curVk===vk?'selected':''}>${name}</option>`
+                    ).join('')}
+                  </select>
+                  ${modBits.map(({bit,name})=>`
+                  <label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none">
+                    <input type="checkbox" id="hkMod_${id}_${bit}"
+                      style="cursor:pointer;accent-color:var(--gold)"
+                      ${(curMods & bit)?'checked':''}
+                      onchange="surveySetHotkey('${id}','${vkField}','${modsField}')">
+                    ${name}
+                  </label>`).join('')}
+                  <span style="font-size:11px;color:var(--text-dim)">${hint}</span>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
           ${['inventory','map'].map(purpose => {
             const isInv = purpose === 'inventory';
             const cfg   = isInv ? (surveyConfig.inventory || {}) : (surveyConfig.map_capture || {});
@@ -4251,6 +4390,16 @@ function renderSurveyTab() {
               : [{k:'x',         lbl:'X'}, {k:'y',            lbl:'Y'}, {k:'w',          lbl:'W'}, {k:'h',          lbl:'H'}];
             const label = isInv ? 'Inventory region (first slot)' : 'Map region';
             const btnTxt = isInv ? 'Select first slot on screen' : 'Select map region on screen';
+            const gridInputs = isInv ? `
+              <div style="display:flex;gap:5px;margin-top:5px">
+                ${[['grid_cols','Cols'],['grid_rows','Rows']].map(([k,lbl]) => `
+                <label style="display:flex;flex-direction:column;gap:2px;align-items:center">
+                  <span style="font-size:9px;color:var(--text-dim);letter-spacing:.05em">${lbl}</span>
+                  <input type="number" min="1" max="20" value="${cfg[k] ?? (k==='grid_cols'?6:5)}"
+                    style="width:52px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:11px;text-align:right"
+                    oninput="surveySend({type:'cmd_update_config',inventory:{${k}:+this.value}})">
+                </label>`).join('')}
+              </div>` : '';
             return `<div>
               <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${label}</div>
               <button class="ctx-btn" onclick="surveySend({type:'cmd_capture_screenshot',purpose:'${purpose}'})">⊞ ${btnTxt}</button>
@@ -4265,6 +4414,7 @@ function renderSurveyTab() {
                     oninput="surveyRegionInput('${purpose}','${k}',+this.value)">
                 </label>`).join('')}
               </div>
+              ${gridInputs}
             </div>`;
           }).join('')}
         </div>
@@ -4320,15 +4470,21 @@ function surveyRenderList() {
     const ns = (loc.south_absolute||0) >= 0 ? 'S' : 'N';
     const ea = Math.abs(loc.east_absolute||0).toFixed(0);
     const sa = Math.abs(loc.south_absolute||0).toFixed(0);
-    return `<div onclick="surveySend({type:'cmd_mark_visited',location_id:${loc.id}})"
-      style="display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border);opacity:${loc.visited?'.45':'1'}"
-      onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background=''">
+    const visitBtn = loc.visited
+      ? `<button onclick="event.stopPropagation();surveySend({type:'cmd_unmark_visited',location_id:${loc.id}})"
+           title="Unmark as visited"
+           style="background:none;border:1px solid #4c4;border-radius:3px;color:#4c4;font-size:11px;padding:1px 5px;cursor:pointer;line-height:1.4"
+           onmouseenter="this.style.background='rgba(68,204,68,.15)'" onmouseleave="this.style.background='none'">✓</button>`
+      : '';
+    return `<div onclick="${loc.visited ? '' : `surveySend({type:'cmd_mark_visited',location_id:${loc.id}})`}"
+      style="display:flex;align-items:center;gap:8px;padding:7px 12px;${loc.visited?'':'cursor:pointer;'}border-bottom:1px solid var(--border);opacity:${loc.visited?'.55':'1'}"
+      ${loc.visited ? '' : `onmouseenter="this.style.background='var(--bg2)'" onmouseleave="this.style.background=''"`}>
       <span style="font-family:'Cinzel',serif;font-size:11px;color:${loc.visited?'var(--text-dim)':'var(--gold)'};min-width:22px;text-align:right">#${num}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${loc.visited?'var(--text-dim)':'var(--text)'}">${loc.item_name}</div>
         <div style="font-size:11px;color:var(--text-dim)">${ea}${ew}, ${sa}${ns}</div>
       </div>
-      ${loc.visited ? '<span style="color:#4c4;font-size:13px">✓</span>' : ''}
+      ${visitBtn}
     </div>`;
   }).join('');
 }

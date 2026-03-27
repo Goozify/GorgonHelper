@@ -41,6 +41,13 @@ class Config:
     overlay_mode: bool = False
     player_east: float = 0.0
     player_south: float = 0.0
+    auto_use_hotkey_vk: int = 0x75    # F6 by default
+    auto_use_hotkey_mods: int = 0     # modifier bitmask: 1=Shift 2=Ctrl 4=Alt
+    single_use_hotkey_vk: int = 0x76  # F7 by default
+    single_use_hotkey_mods: int = 0   # modifier bitmask
+    # Set to true in config.json to enable the Auto-use hotkey (advanced/debug feature).
+    # Not exposed in the UI — edit config.json manually.
+    debug_auto_use: bool = False
 
     def save(self):
         os.makedirs(DATA_DIR, exist_ok=True)
@@ -59,7 +66,13 @@ class Config:
             return cls()
 
     def _to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        # Auto-use hotkey is a debug-only feature — only persist the keys when
+        # explicitly enabled so they don't appear for normal users.
+        if not self.debug_auto_use:
+            d.pop("auto_use_hotkey_vk",   None)
+            d.pop("auto_use_hotkey_mods", None)
+        return d
 
     @classmethod
     def _from_dict(cls, data: dict) -> "Config":
@@ -77,4 +90,9 @@ class Config:
         cfg.overlay_mode = data.get("overlay_mode", False)
         cfg.player_east = data.get("player_east", 0.0)
         cfg.player_south = data.get("player_south", 0.0)
+        cfg.auto_use_hotkey_vk   = data.get("auto_use_hotkey_vk",   0x75)
+        cfg.auto_use_hotkey_mods = data.get("auto_use_hotkey_mods", 0)
+        cfg.single_use_hotkey_vk   = data.get("single_use_hotkey_vk",   0x76)
+        cfg.single_use_hotkey_mods = data.get("single_use_hotkey_mods", 0)
+        cfg.debug_auto_use = data.get("debug_auto_use", False)
         return cfg
