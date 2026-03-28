@@ -4109,17 +4109,6 @@ function renderSettingsTab() {
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">🔐 Safecracking</div>
     <div class="settings-meta" style="margin-bottom:8px">Solver for the in-game vault puzzle. Uses the same Survey Helper backend (ws://localhost:8765).</div>
-    <div class="settings-row">
-      <div>
-        <div class="settings-label">Rune grid region</div>
-        <div class="settings-meta">
-          ${(surveyConfig.safecracking_region?.w||0) > 0
-            ? `Set &mdash; ${surveyConfig.safecracking_region.w}&times;${surveyConfig.safecracking_region.h} px`
-            : 'Not set &mdash; select the 2&times;6 symbol grid in the game window'}
-        </div>
-      </div>
-      <button class="sync-btn" onclick="scSend({type:'sc_select_region'})" style="margin-left:16px">⊡ Select Region</button>
-    </div>
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
@@ -4768,11 +4757,10 @@ function _scRenderGuessRow() {
   const el = document.getElementById('scGuessRow');
   if (!el) return;
   const solver = scState?.solver;
-  const symbols = scState?.symbols || [];
   const html = [0,1,2,3].map(i => {
     const v = scGuessInputs[i];
-    const img = (v && symbols[v-1])
-      ? `<img src="data:image/png;base64,${symbols[v-1]}" style="width:44px;height:44px;border-radius:6px">`
+    const img = v
+      ? `<img src="/icons/safecracking/symbol_${v}.png" style="width:44px;height:44px;border-radius:6px">`
       : `<div style="width:44px;height:44px;border-radius:6px;border:2px dashed var(--border);background:var(--bg3)"></div>`;
     return `<div style="cursor:pointer;position:relative" onclick="_scOpenSymbolPicker(${i})" title="Click to change slot ${i+1}">
       ${img}
@@ -4783,15 +4771,15 @@ function _scRenderGuessRow() {
 }
 
 function _scOpenSymbolPicker(slot) {
-  const symbols = scState?.symbols || [];
+  const symbolCount = scState?.solver?.symbols?.length || 12;
   const picker = document.getElementById('scSymbolPicker');
   if (!picker) return;
   picker.innerHTML = `<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">Select symbol for slot ${slot+1}:</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
-      ${symbols.map((b64,i) => `
+      ${Array.from({length:symbolCount},(_,i) => `
         <div onclick="scSelectSymbol(${slot},${i+1});document.getElementById('scSymbolPicker').style.display='none'" title="Symbol ${i+1}"
           style="cursor:pointer;border:2px solid ${scGuessInputs[slot]===i+1?'var(--gold)':'var(--border)'};border-radius:6px;padding:2px;background:var(--bg3)">
-          <img src="data:image/png;base64,${b64}" style="width:40px;height:40px;display:block;border-radius:4px">
+          <img src="/icons/safecracking/symbol_${i+1}.png" style="width:40px;height:40px;display:block;border-radius:4px">
           <div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:1px">${i+1}</div>
         </div>`).join('')}
     </div>
@@ -4842,29 +4830,24 @@ function renderSafecrackingTab() {
 
   const sc = scState;
   const solver = sc?.solver;
-  const symbols = sc?.symbols || [];
-  const region = sc?.region || {};
-  const regionSet = (region.w || 0) > 0;
   const history = solver?.history || [];
   const suggestion = solver?.suggestion;
   const solved = solver?.solved || false;
   const impossible = solver?.impossible || false;
-  const candidates = solver?.candidates_count ?? '—';
+  const candidates = solver?.candidates ?? '—';
   const guessCount = solver?.guess_count || 0;
   const symbolCount = solver?.symbols?.length || 12;
 
   // Suggestion banner text
   let bannerHtml = '';
-  if (!symbols.length) {
-    bannerHtml = `<div style="color:var(--text-dim);font-size:13px">Capture the rune grid to begin.</div>`;
-  } else if (impossible) {
+  if (impossible) {
     bannerHtml = `<div style="color:#e07070;font-size:14px;font-weight:600">⚠ No consistent solution — check for input errors. Use Undo to correct.</div>`;
   } else if (solved) {
     const sol = solver.candidates === 1 ? solver.suggestion : null;
-    const solHtml = sol ? sol.map(v => `<span style="display:inline-block;border:2px solid var(--gold);border-radius:6px;padding:2px 4px;margin:0 2px"><img src="data:image/png;base64,${symbols[v-1]}" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('') : '';
+    const solHtml = sol ? sol.map(v => `<span style="display:inline-block;border:2px solid var(--gold);border-radius:6px;padding:2px 4px;margin:0 2px"><img src="/icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('') : '';
     bannerHtml = `<div style="color:#7ab880;font-size:14px;font-weight:600;margin-bottom:6px">✓ Solution found! Enter this combination:</div>${solHtml}`;
   } else if (suggestion) {
-    const sugHtml = suggestion.map(v => `<span style="display:inline-block;border:2px solid var(--gold-dim);border-radius:6px;padding:2px 4px;margin:0 2px;cursor:pointer" onclick="scApplySuggestion()" title="Click to fill guess"><img src="data:image/png;base64,${symbols[v-1]}" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('');
+    const sugHtml = suggestion.map(v => `<span style="display:inline-block;border:2px solid var(--gold-dim);border-radius:6px;padding:2px 4px;margin:0 2px;cursor:pointer" onclick="scApplySuggestion()" title="Click to fill guess"><img src="/icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('');
     bannerHtml = `<div style="color:var(--gold);font-size:12px;margin-bottom:6px;font-weight:600">SUGGESTED GUESS (${candidates} candidates remain):</div>
       <div style="margin-bottom:8px">${sugHtml}</div>
       <button class="sync-btn" onclick="scApplySuggestion()" style="font-size:12px;padding:4px 14px;background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">↓ Fill into guess</button>`;
@@ -4872,7 +4855,7 @@ function renderSafecrackingTab() {
 
   // History rows
   const histHtml = history.length ? history.map((h, i) => {
-    const symHtml = h.guess.map(v => `<img src="data:image/png;base64,${symbols[v-1]||''}" style="width:30px;height:30px;border-radius:4px;vertical-align:middle" title="Symbol ${v}">`).join(' ');
+    const symHtml = h.guess.map(v => `<img src="/icons/safecracking/symbol_${v}.png" style="width:30px;height:30px;border-radius:4px;vertical-align:middle" title="Symbol ${v}">`).join(' ');
     const color = (h.exact === 4) ? '#7ab880' : h.exact > 0 ? 'var(--gold)' : 'var(--text-dim)';
     return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
       <div style="color:var(--text-dim);font-size:11px;min-width:16px">#${i+1}</div>
@@ -4889,44 +4872,13 @@ function renderSafecrackingTab() {
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
     <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--gold)">🔐 Safecracking Solver</div>
     <div style="flex:1"></div>
-    ${!regionSet
-      ? `<button class="sync-btn" onclick="scSend({type:'sc_select_region'})" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">⊡ Select Rune Grid Region</button>`
-      : `<button class="sync-btn" onclick="scSend({type:'sc_capture'})" title="Re-capture rune grid from screen">⟳ Refresh Symbols</button>
-         <button class="sync-btn" onclick="scSend({type:'sc_select_region'})" style="color:var(--text-dim)">⊡ Change Region</button>`
-    }
-    ${symbols.length ? `
-      <select onchange="scSend({type:'sc_reset',symbol_count:parseInt(this.value)});this.blur()"
-        style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px" title="Active symbols">
-        <option value="6" ${symbolCount===6?'selected':''}>6 symbols (dungeon hints)</option>
-        <option value="12" ${symbolCount===12?'selected':''}>12 symbols (no hints)</option>
-      </select>
-      <button class="sync-btn danger" onclick="if(confirm('Reset solver?')){scGuessInputs=['','','',''];scSend({type:'sc_reset',symbol_count:${symbolCount}})}" title="Start new puzzle">↺ Reset</button>
-    ` : ''}
+    <select onchange="scSend({type:'sc_reset',symbol_count:parseInt(this.value)});this.blur()"
+      style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px" title="Active symbols">
+      <option value="6" ${symbolCount===6?'selected':''}>6 symbols (dungeon hints)</option>
+      <option value="12" ${symbolCount===12?'selected':''}>12 symbols (no hints)</option>
+    </select>
+    <button class="sync-btn danger" onclick="if(confirm('Reset solver?')){scGuessInputs=['','','',''];scSend({type:'sc_reset',symbol_count:${symbolCount}})}" title="Start new puzzle">↺ Reset</button>
   </div>
-
-  ${!regionSet ? `
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;text-align:center;color:var(--text-dim);margin-bottom:16px">
-    <div style="font-size:32px;margin-bottom:8px">⊡</div>
-    <div style="margin-bottom:8px">Click <strong style="color:var(--text)">Select Rune Grid Region</strong> and drag over the 2×6 rune symbol grid in the game window.</div>
-    <div style="font-size:11px">The app will extract all 12 symbols and number them 1–12.</div>
-  </div>` : ''}
-
-  <!-- Symbol grid -->
-  ${symbols.length ? `
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
-    <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-weight:600">RUNE SYMBOLS (${symbols.length})</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
-      ${symbols.map((b64,i) => {
-        const inUse = solver?.symbols?.includes(i+1);
-        const isSug = suggestion?.includes(i+1);
-        return `<div style="text-align:center;opacity:${inUse===false?'.35':'1'}">
-          <img src="data:image/png;base64,${b64}" title="Symbol ${i+1}"
-            style="width:48px;height:48px;border-radius:8px;border:2px solid ${isSug?'var(--gold)':'var(--border)'};display:block">
-          <div style="font-size:10px;color:${isSug?'var(--gold)':'var(--text-dim)'};margin-top:2px">${i+1}</div>
-        </div>`;
-      }).join('')}
-    </div>
-  </div>` : ''}
 
   <!-- Suggestion banner -->
   ${bannerHtml ? `
@@ -4935,7 +4887,7 @@ function renderSafecrackingTab() {
   </div>` : ''}
 
   <!-- Guess entry -->
-  ${symbols.length && !solved ? `
+  ${!solved ? `
   <div id="scGuessSection" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-weight:600">ENTER GUESS #${guessCount+1}</div>
 

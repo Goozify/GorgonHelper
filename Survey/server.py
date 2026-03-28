@@ -1182,12 +1182,9 @@ class SurveyServer:
     # ------------------------------------------------------------------
 
     def _sc_build_state(self) -> dict:
-        sc = self.config.safecracking_region
         solver_state = self._sc_solver.to_dict() if self._sc_solver else None
         return {
             "type": "sc_state",
-            "region": {"x": sc.x, "y": sc.y, "w": sc.w, "h": sc.h},
-            "symbols": self._sc_symbols,
             "solver": solver_state,
         }
 
@@ -1213,7 +1210,7 @@ class SurveyServer:
 
     async def _sc_reset(self, symbol_count: int):
         """Reset the solver for a new puzzle."""
-        n = min(max(symbol_count, 2), len(self._sc_symbols) or 12)
+        n = min(max(symbol_count, 2), 12)
         symbols = list(range(1, n + 1))
         if self._sc_solver is None:
             self._sc_solver = SafecrackingSolver(symbols)
