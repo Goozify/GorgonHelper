@@ -464,6 +464,10 @@ let LANDMARKS = {};       // areaName -> [{name, type, desc, x, z}]
 let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false };
 let dataVersions = {}; // key -> version string read from _version field
 
+// ── Player log data ──
+let playerLogNpcs = {};      // npcKey → {currentGold, maxGold, resetField, favorLevel, loggedAt}
+let playerLogNpcIdMap = {};  // numericId → npcKey (learned from ProcessStartInteraction/ProcessDeltaFavor)
+
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
 // ═══════════════════════════════════════════════════════════
@@ -1457,7 +1461,7 @@ function renderRightAll() {
   restoreFocus(q);
 }
 
-function restoreFocus(q) { if(q){const i=document.getElementById('searchInput');i?.focus();i?.setSelectionRange(i.value.length,i.value.length);} }
+function restoreFocus(q) { const i=document.getElementById('searchInput');i?.focus();i?.setSelectionRange(i.value.length,i.value.length); }
 
 // ═══════════════════════════════════════════════════════════
 // ITEM TOOLTIP
@@ -2232,6 +2236,110 @@ function buildFavorTrainingPanel(npcKey, chars) {
   return html;
 }
 
+// ── Player log parsing ──────────────────────────────────────
+
+function loadPlayerLogFromStorage() {
+  try {
+    const d = localStorage.getItem('pgPlayerLogNpcs');
+    if (d) playerLogNpcs = JSON.parse(d);
+    const m = localStorage.getItem('pgPlayerLogNpcIdMap');
+    if (m) playerLogNpcIdMap = JSON.parse(m);
+  } catch(e) {}
+}
+
+function parsePlayerLog(text) {
+  const lines = text.split('\n');
+  let vendorCount = 0;
+  for (const line of lines) {
+    // Learn id→npcKey from ProcessStartInteraction
+    let m = line.match(/ProcessStartInteraction\((\d+),.*?"(NPC_\w+)"\)/);
+    if (m) { playerLogNpcIdMap[m[1]] = m[2]; continue; }
+    // Learn id→npcKey from ProcessDeltaFavor
+    m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)"/);
+    if (m) { playerLogNpcIdMap[m[1]] = m[2]; continue; }
+    // Vendor data from ProcessVendorScreen(id, favorLevel, currentGold, resetField, maxGold, ...)
+    m = line.match(/ProcessVendorScreen\((\d+),\s*(\w+),\s*(\d+),\s*(\d+),\s*(\d+)/);
+    if (m) {
+      const [, id, favorLevel, currentGold, resetField, maxGold] = m;
+      const npcKey = playerLogNpcIdMap[id];
+      if (npcKey) {
+        playerLogNpcs[npcKey] = {
+          currentGold: +currentGold, maxGold: +maxGold,
+          resetField: +resetField, favorLevel,
+          loggedAt: Date.now()
+        };
+        vendorCount++;
+      }
+    }
+  }
+  try {
+    localStorage.setItem('pgPlayerLogNpcs', JSON.stringify(playerLogNpcs));
+    localStorage.setItem('pgPlayerLogNpcIdMap', JSON.stringify(playerLogNpcIdMap));
+  } catch(e) {}
+  return vendorCount;
+}
+
+function pickPlayerLog() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.log,.txt,*';
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    const text = await f.text();
+    const count = parsePlayerLog(text);
+    showToast(`Loaded ${count} NPC vendor entries from player.log`);
+    if (mainTab === 'settings') renderSettingsTab();
+    if (mainTab === 'favors') renderFavorsTab();
+  };
+  inp.click();
+}
+
+function clearPlayerLogData() {
+  playerLogNpcs = {};
+  playerLogNpcIdMap = {};
+  localStorage.removeItem('pgPlayerLogNpcs');
+  localStorage.removeItem('pgPlayerLogNpcIdMap');
+  if (mainTab === 'settings') renderSettingsTab();
+  if (mainTab === 'favors') renderFavorsTab();
+}
+
+function formatGoldReset(resetField) {
+  // Try as Unix ms timestamp (game stores reset-at time in ms)
+  const now = Date.now();
+  const diff = resetField - now;
+  if (diff > 0 && diff < 30 * 86400 * 1000) {
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  }
+  if (diff <= 0 && diff > -86400000) return 'resetting soon';
+  return '?';
+}
+
+function buildFavorVendorPanel(npcKey) {
+  const v = playerLogNpcs[npcKey];
+  if (!v) return '';
+  const pct = v.maxGold > 0 ? Math.round(v.currentGold / v.maxGold * 100) : 0;
+  const goldColor = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
+  const resetStr = formatGoldReset(v.resetField);
+  const loggedAgo = Math.round((Date.now() - v.loggedAt) / 60000);
+  const agoStr = loggedAgo < 60 ? `${loggedAgo}m ago` : `${Math.round(loggedAgo/60)}h ago`;
+  return `<div style="padding:8px 4px 6px">
+    <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;padding-bottom:3px;border-bottom:1px solid var(--border)">Vendor Gold <span style="color:var(--text-dim);font-size:9px;font-family:inherit">(seen ${agoStr})</span></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;background:var(--bg3);border-radius:3px;height:7px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${goldColor};border-radius:3px;transition:width .3s"></div>
+      </div>
+      <span style="font-size:13px;color:var(--gold-light);font-family:'Cinzel',serif;white-space:nowrap">🪙 ${v.currentGold.toLocaleString()} / ${v.maxGold.toLocaleString()}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:5px">Gold resets in: <span style="color:var(--text)">${resetStr}</span></div>
+  </div>`;
+}
+
 function renderFavorsTab() {
   if (activeCharId === '__favorcalc__') return renderFavorCalcTab();
   const showAll = activeCharId === '__all__';
@@ -2310,15 +2418,20 @@ function renderFavorsTab() {
 
     const safeKey = npc.key.replace(/'/g,"\\'");
     const hasTraining = dataLoaded.npc_training && NPC_TRAINING[npc.key]?.length > 0;
+    const hasVendorData = !!playerLogNpcs[npc.key];
+    const hasExpand = hasTraining || hasVendorData;
     const expanded = expandedFavorNpcs.has(npc.key);
-    const toggleIcon = hasTraining ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${expanded ? '▲' : '▼'}</span>` : '';
+    const toggleIcon = hasExpand ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${expanded ? '▲' : '▼'}</span>` : '';
 
-    const detailRow = (hasTraining && expanded)
-      ? `<tr><td colspan="2" style="padding:0 8px 10px 12px;background:var(--bg2);border-bottom:1px solid var(--border)">${buildFavorTrainingPanel(npc.key, charList)}</td></tr>`
+    const detailRow = (hasExpand && expanded)
+      ? `<tr><td colspan="2" style="padding:0 8px 10px 12px;background:var(--bg2);border-bottom:1px solid var(--border)">
+          ${buildFavorVendorPanel(npc.key)}
+          ${hasTraining ? buildFavorTrainingPanel(npc.key, charList) : ''}
+        </td></tr>`
       : '';
 
-    return `<tr class="favor-row" style="${hasTraining ? 'cursor:pointer' : ''}"
-      onclick="${hasTraining ? `toggleFavorNpc('${safeKey}')` : ''}"
+    return `<tr class="favor-row" style="${hasExpand ? 'cursor:pointer' : ''}"
+      onclick="${hasExpand ? `toggleFavorNpc('${safeKey}')` : ''}"
       onmouseenter="showNpcPrefTooltip('${safeKey}', event)"
       onmouseleave="hideNpcPrefTooltip()">
       <td>
@@ -4107,6 +4220,40 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+    <div class="settings-title">📋 Player Log</div>
+    <div class="settings-meta" style="margin-bottom:10px">Load <code style="color:var(--gold)">player.log</code> to track NPC vendor gold amounts and reset times. Data is stored in the browser and persists across sessions.</div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">NPC vendor entries tracked</div>
+        <div class="settings-meta">
+          ${Object.keys(playerLogNpcs).length === 0
+            ? 'No data — load player.log to begin'
+            : `${Object.keys(playerLogNpcs).length} NPCs · ${Object.keys(playerLogNpcIdMap).length} IDs learned`}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="sync-btn" onclick="pickPlayerLog()">📂 Load player.log</button>
+        ${Object.keys(playerLogNpcs).length > 0 ? `<button class="sync-btn danger" onclick="clearPlayerLogData()">✕ Clear</button>` : ''}
+      </div>
+    </div>
+    ${Object.keys(playerLogNpcs).length > 0 ? `
+    <div style="margin-top:10px;max-height:180px;overflow-y:auto;font-size:11px;color:var(--text-dim)">
+      ${Object.entries(playerLogNpcs).sort((a,b)=>b[1].loggedAt-a[1].loggedAt).slice(0,20).map(([k,v]) => {
+        const name = NPCS[k]?.name || k.replace('NPC_','').replace(/_/g,' ');
+        const pct = v.maxGold > 0 ? Math.round(v.currentGold / v.maxGold * 100) : 0;
+        const agoMs = Date.now() - v.loggedAt;
+        const agoStr = agoMs < 3600000 ? `${Math.round(agoMs/60000)}m ago` : `${Math.round(agoMs/3600000)}h ago`;
+        return `<div class="settings-row" style="padding:3px 0">
+          <span style="min-width:140px">${name}</span>
+          <span style="color:var(--gold)">🪙 ${v.currentGold.toLocaleString()} / ${v.maxGold.toLocaleString()}</span>
+          <span style="margin-left:8px">(${pct}%)</span>
+          <span style="margin-left:auto;color:var(--text-dim)">${agoStr}</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">🔐 Safecracking</div>
     <div class="settings-meta" style="margin-bottom:8px">Solver for the in-game vault puzzle. Uses the same Survey Helper backend (ws://localhost:8765).</div>
   </div>
@@ -4844,10 +4991,10 @@ function renderSafecrackingTab() {
     bannerHtml = `<div style="color:#e07070;font-size:14px;font-weight:600">⚠ No consistent solution — check for input errors. Use Undo to correct.</div>`;
   } else if (solved) {
     const sol = solver.candidates === 1 ? solver.suggestion : null;
-    const solHtml = sol ? sol.map(v => `<span style="display:inline-block;border:2px solid var(--gold);border-radius:6px;padding:2px 4px;margin:0 2px"><img src="icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('') : '';
+    const solHtml = sol ? sol.map(v => `<span style="display:inline-block;border:2px solid var(--gold);border-radius:6px;padding:2px 4px;margin:0 2px"><img src="icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"></span>`).join('') : '';
     bannerHtml = `<div style="color:#7ab880;font-size:14px;font-weight:600;margin-bottom:6px">✓ Solution found! Enter this combination:</div>${solHtml}`;
   } else if (suggestion) {
-    const sugHtml = suggestion.map(v => `<span style="display:inline-block;border:2px solid var(--gold-dim);border-radius:6px;padding:2px 4px;margin:0 2px;cursor:pointer" onclick="scApplySuggestion()" title="Click to fill guess"><img src="icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"> <span style="font-size:12px;color:var(--text-dim)">${v}</span></span>`).join('');
+    const sugHtml = suggestion.map(v => `<span style="display:inline-block;border:2px solid var(--gold-dim);border-radius:6px;padding:2px 4px;margin:0 2px;cursor:pointer" onclick="scApplySuggestion()" title="Click to fill guess"><img src="icons/safecracking/symbol_${v}.png" style="width:36px;height:36px;vertical-align:middle;border-radius:4px"></span>`).join('');
     bannerHtml = `<div style="color:var(--gold);font-size:12px;margin-bottom:6px;font-weight:600">SUGGESTED GUESS (${candidates} candidates remain):</div>
       <div style="margin-bottom:8px">${sugHtml}</div>
       <button class="sync-btn" onclick="scApplySuggestion()" style="font-size:12px;padding:4px 14px;background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">↓ Fill into guess</button>`;
@@ -4877,7 +5024,7 @@ function renderSafecrackingTab() {
       <option value="6" ${symbolCount===6?'selected':''}>6 symbols (dungeon hints)</option>
       <option value="12" ${symbolCount===12?'selected':''}>12 symbols (no hints)</option>
     </select>
-    <button class="sync-btn danger" onclick="if(confirm('Reset solver?')){scGuessInputs=['','','',''];scSend({type:'sc_reset',symbol_count:${symbolCount}})}" title="Start new puzzle">↺ Reset</button>
+    <button class="sync-btn danger" onclick="scGuessInputs=['','','',''];scSend({type:'sc_reset',symbol_count:${symbolCount}})" title="Start new puzzle">↺ Reset</button>
   </div>
 
   <!-- Suggestion banner -->
@@ -5350,6 +5497,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadWOLimits();
   await loadWOCompleted();
   await loadPinnedSkills();
+  loadPlayerLogFromStorage();
 
   // Restore survey tab visibility preference
   if (localStorage.getItem('showSurveyTab') === '1') setSurveyTabVisible(true, false);
