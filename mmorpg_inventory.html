@@ -2273,9 +2273,16 @@ function parsePlayerLogLines(lines) {
     // Learn id→npcKey from ProcessStartInteraction(id, ..., "NPC_Name")
     m = line.match(/ProcessStartInteraction\((\d+),.*?"(NPC_\w+)"\)/);
     if (m) { d.idMap[m[1]] = m[2]; continue; }
-    // Learn id→npcKey from ProcessDeltaFavor(id, "NPC_Name", ...)
-    m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)"/);
-    if (m) { d.idMap[m[1]] = m[2]; continue; }
+    // ProcessDeltaFavor(id, "NPC_Name", favorValue, ...) — learn mapping AND store exact favor
+    m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)",\s*([\d.]+)/);
+    if (m) {
+      d.idMap[m[1]] = m[2];
+      if (!d.npcs[m[2]]) d.npcs[m[2]] = { loggedAt: Date.now() };
+      d.npcs[m[2]].exactFavor = parseFloat(m[3]);
+      d.npcs[m[2]].loggedAt = Date.now();
+      vendorCount++;
+      continue;
+    }
     // Vendor data: ProcessVendorScreen(id, favorLevel, currentGold, resetAt, maxGold, ...)
     m = line.match(/ProcessVendorScreen\((\d+),\s*(\w+),\s*(\d+),\s*(\d+),\s*(\d+)/);
     if (m) {
@@ -2538,12 +2545,12 @@ function renderFavorsTab() {
           if (!favor) return '';
           return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
             <span style="font-size:10px;color:var(--text-dim);min-width:70px;flex-shrink:0">${c.charData.Character}</span>
-            ${renderFavorCell(favor)}
+            ${renderFavorCell(favor, playerLogData[c.charData?.Character]?.npcs[npc.key]?.exactFavor)}
           </div>`;
         }).filter(Boolean).join('')}</td>`
       : npc.logOnly
         ? `<td class="favor-bar-cell"><span style="font-size:11px;color:var(--text-dim)">—</span></td>`
-        : `<td class="favor-bar-cell">${renderFavorCell(Object.values(npc.chars)[0] || 'Neutral')}</td>`;
+        : `<td class="favor-bar-cell">${renderFavorCell(Object.values(npc.chars)[0] || 'Neutral', singleCharName && playerLogData[singleCharName]?.npcs[npc.key]?.exactFavor)}</td>`;
 
     const safeKey = npc.key.replace(/'/g,"\\'");
     const hasTraining = dataLoaded.npc_training && NPC_TRAINING[npc.key]?.length > 0;
@@ -2625,13 +2632,22 @@ function renderFavorsTab() {
   </div>`;
 }
 
-function renderFavorCell(favor) {
+function renderFavorCell(favor, exactFavor) {
   const fc = FAVOR_COLORS[favor] || FAVOR_COLORS.Neutral;
-  const pct = FAVOR_PCT[favor] ?? 0;
   const displayName = favor.replace(/([A-Z])/g,' $1').trim();
-  return `<div class="favor-bar-row">
-    <div class="favor-pbar-wrap"><div class="favor-pbar" style="width:${pct}%;background:${fc.bar}"></div></div>
-    <span class="favor-level-badge" style="color:${fc.text};background:${fc.bg};border-color:${fc.border}">${displayName}</span>
+  let pct, subHtml = '';
+  if (exactFavor != null && FAVOR_TIER_CAPS[favor] != null) {
+    const cap = FAVOR_TIER_CAPS[favor];
+    pct = Math.min(100, (exactFavor / cap) * 100);
+    subHtml = `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${exactFavor.toFixed(1)} / ${cap}</div>`;
+  } else {
+    pct = FAVOR_PCT[favor] ?? 0;
+  }
+  return `<div>
+    <div class="favor-bar-row">
+      <div class="favor-pbar-wrap"><div class="favor-pbar" style="width:${pct}%;background:${fc.bar}"></div></div>
+      <span class="favor-level-badge" style="color:${fc.text};background:${fc.bg};border-color:${fc.border}">${displayName}</span>
+    </div>${subHtml}
   </div>`;
 }
 

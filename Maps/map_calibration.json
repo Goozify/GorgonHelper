@@ -1,0 +1,22 @@
+{
+  "AreaKurMountains": {
+    "image": "Map_AreaKurMountains.jpg",
+    "img_width": 2048,
+    "img_height": 2048,
+    "x_left": 3847.5,
+    "x_right": 253.0,
+    "z_top": 251.7,
+    "z_bottom": 3847.7,
+    "note": "Calibrated from in-game corner map pins (BL/BR/TL/TR) 2026-03-29"
+  },
+  "AreaSerbule": {
+    "image": "Map_AreaSerbule.jpg",
+    "img_width": 1961,
+    "img_height": 2048,
+    "x_left": 193.2,
+    "x_right": 2575.85,
+    "z_top": 2761.56,
+    "z_bottom": 273.06,
+    "note": "Calibrated from in-game corner map pins (BL/BR/TL/TR) 2026-03-29"
+  }
+}
