@@ -26,10 +26,21 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .hdr-btn:disabled{opacity:.5;cursor:default}
 
 /* ── Main nav tabs (Storage / Work Orders / Recipes / Settings) ── */
-.main-nav{display:flex;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;position:sticky;top:49px;z-index:190}
+.main-nav{display:flex;flex-wrap:nowrap;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;position:sticky;top:49px;z-index:190;align-items:center}
 .nav-tab{font-family:'Cinzel',serif;font-size:12px;padding:10px 18px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;transition:all .15s;letter-spacing:.05em;white-space:nowrap}
 .nav-tab:hover{color:var(--text)}
 .nav-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.nav-hamburger{display:none;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;font-size:16px;border-radius:4px;margin:5px 0;line-height:1;font-family:inherit;flex-shrink:0}
+.nav-hamburger:hover{border-color:var(--gold-dim);color:var(--text)}
+@media(max-width:860px){.nav-tab{font-size:11px;padding:10px 12px}}
+@media(max-width:660px){.nav-tab{font-size:10px;padding:9px 8px;letter-spacing:0}}
+@media(max-width:480px){
+  .main-nav{padding:0 12px;flex-wrap:wrap}
+  .nav-hamburger{display:block}
+  .main-nav:not(.nav-open) .nav-tab{display:none}
+  .main-nav.nav-open{flex-direction:column;align-items:stretch}
+  .main-nav.nav-open .nav-tab{display:block;width:100%;border-bottom:1px solid var(--border);border-left:none;border-right:none;padding:11px 4px;box-sizing:border-box}
+}
 
 /* ── Character tabs row ── */
 .char-tabs{display:flex;gap:5px;padding:10px 20px 0;border-bottom:1px solid var(--border);background:var(--bg);flex-wrap:wrap}
@@ -394,15 +405,16 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 <div class="header">
   <div class="header-title">⚔ Project: Gorgon <span>Item Helper</span></div>
   <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
-    <div id="folderStatus" style="font-size:11px;color:var(--text-dim);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-    <button id="refreshBtn" class="hdr-btn" onclick="manualRefresh()" style="display:none">↺ Refresh</button>
-    <div id="autoStatus" style="display:none;font-size:10px;color:var(--text-dim);white-space:nowrap"></div>
-    <button class="hdr-btn" onclick="pickFolder()">📂 Watch Folder</button>
+    <div id="folderStatus" style="display:none"></div>
+    <button id="refreshBtn" style="display:none"></button>
+    <div id="autoStatus" style="display:none"></div>
+    <div id="headerChar" style="display:none;font-size:11px;color:var(--gold-dim);white-space:nowrap;font-family:'Cinzel',serif"></div>
     <button class="hdr-btn" id="hdr-settings-btn" onclick="setMainTab('settings')" style="border-color:var(--border)">⚙ Settings</button>
   </div>
 </div>
 
-<div class="main-nav">
+<div class="main-nav" id="main-nav">
+  <button class="nav-hamburger" onclick="toggleNavMenu()">☰</button>
   <div class="nav-tab active" id="nav-storage" onclick="setMainTab('storage')">Storage</div>
   <div class="nav-tab" id="nav-workorders" onclick="setMainTab('workorders')">Work Orders</div>
   <div class="nav-tab" id="nav-recipes" onclick="setMainTab('recipes')">Recipes</div>
@@ -410,8 +422,7 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
   <div class="nav-tab" id="nav-favors" onclick="setMainTab('favors')">Favors</div>
   <div class="nav-tab" id="nav-quests" onclick="setMainTab('quests')">Quests</div>
   <div class="nav-tab" id="nav-maps" onclick="setMainTab('maps')">Maps</div>
-  <div class="nav-tab" id="nav-survey" onclick="setMainTab('survey')" style="display:none">Survey</div>
-  <div class="nav-tab" id="nav-safecracking" onclick="setMainTab('safecracking')" style="display:none">🔐 Safecracking</div>
+  <div class="nav-tab" id="nav-tools" onclick="setMainTab('tools')">Tools</div>
 </div>
 
 <div id="charTabsRow" class="char-tabs"></div>
@@ -431,6 +442,60 @@ let searchQuery = '';
 let searchMode = 'single';
 let activeVaultFilter = null;
 let showConsolidateOnly = false;
+
+// Tools tab state
+let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening'
+
+// Gardening tab state
+let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
+let gardenSessionActive = false; // only collect plot events when user has pressed Start
+const playerOwnedPetIds = new Set(); // entity IDs from LocalPlayer: ProcessSetPetOwner — our plants only
+let pendingHarvestPlotId = null;  // plotId of last StartInteraction for a tracked garden entity (cleared by Gardening XP or ScreenText error)
+const gardenItemCropMap = {};     // itemId (string) → cropType: built from ProcessAddItem so UpdateItemCode can identify the crop
+let lastUpdateItemCropType = null; // cropType inferred from the most recent ProcessUpdateItemCode whose itemId is in gardenItemCropMap
+
+// Module-level slot map — used both in render and in parsePlayerLogLines for slot-fullness checks
+// slot → max: how many non-harvested plants of this slot are allowed simultaneously
+const GARDEN_SLOT_MAP = {
+  'Potato':{'slot':'Potato','max':2}, 'Onion':{'slot':'Onion','max':2},
+  'Cabbage':{'slot':'Lettuce','max':2}, 'Escarole':{'slot':'Lettuce','max':2},
+  'Beet':{'slot':'Beet','max':2}, 'Squash':{'slot':'Squash','max':2},
+  'Broccoli':{'slot':'Broccoli','max':2}, 'Carrot':{'slot':'Carrot','max':2},
+  'Green Pepper':{'slot':'Pepper','max':2}, 'Red Pepper':{'slot':'Pepper','max':2},
+  'Corn':{'slot':'Corn','max':2}, 'Basil':{'slot':'Basil','max':2},
+  'Cantaloupe':{'slot':'Gourd','max':2}, 'Pumpkin':{'slot':'Gourd','max':2},
+  'Pea':{'slot':'Pea','max':2}, 'Soybean':{'slot':'Soybean','max':2},
+  'Tomato':{'slot':'Tomato','max':2}, 'Flax':{'slot':'Flax','max':2},
+  'Red-Leaf Lettuce':{'slot':'Red Lettuce','max':2},
+  'Bluebell':{'slot':'Flowers','max':3},'Red Aster':{'slot':'Flowers','max':3},
+  'Violet':{'slot':'Flowers','max':3},'Dahlia':{'slot':'Flowers','max':3},
+  'Daisy':{'slot':'Flowers','max':3},'Pansy':{'slot':'Flowers','max':3},
+  'Marigold':{'slot':'Flowers','max':3},'Poppy':{'slot':'Flowers','max':3},
+  'Red Rose':{'slot':'Flowers','max':3},'Elven Lily':{'slot':'Flowers','max':3},
+  'Winterhue':{'slot':'Flowers','max':3},'Desert Rose':{'slot':'Flowers','max':3},
+  'Dandelion':{'slot':'Flowers','max':3},'Fae Mysotis':{'slot':'Flowers','max':3},
+  'Tulip':{'slot':'Flowers','max':3},'Paleblood':{'slot':'Flowers','max':3},
+  'Hyacinth':{'slot':'Flowers','max':3},'Swamp Lily':{'slot':'Flowers','max':3},
+  'Lavender':{'slot':'Flowers','max':3},
+  'Cotton':{'slot':'Cotton','max':5},'Cotton Plant':{'slot':'Cotton','max':5},
+  'Sugarcane':{'slot':'Grass','max':2},'Barley':{'slot':'Grass','max':2},
+};
+
+// Returns true if planting another `cropType` for `charName` would exceed the slot limit
+function isGardenSlotFull(cropType, charName) {
+  const slotInfo = GARDEN_SLOT_MAP[cropType];
+  if (!slotInfo) return false;
+  let count = 0;
+  for (const p of Object.values(gardenData[charName]?.plots || {})) {
+    if (p.stage !== 'harvested' && GARDEN_SLOT_MAP[p.cropType]?.slot === slotInfo.slot) count++;
+  }
+  return count >= slotInfo.max;
+}
+let lastCropAsset = null; // last alpha-only model name seen in Download appearance loop (for planted-stage detection)
+let lastCropAssetTime = 0; // when lastCropAsset was set — only trust within 5s to avoid stale area-load appearances
+let lastCropAssetUsed = false; // true after a pending fill consumed lastCropAsset; prevents "is done" re-polluting it
+let pendingPlantForCrop = null; // { plotId, charName } awaiting crop name from appearance loop
+let gardenRefreshTimer = null; // interval timer for real-time growth bar updates on the gardening tab
 
 // Survey tab state
 let showSurveyTab = false;
@@ -629,8 +694,6 @@ async function resumeFolder() {
 async function attachFolder(h) {
   folderHandle = h;
   document.getElementById('folderStatus').textContent = '📁 ' + h.name;
-  document.getElementById('refreshBtn').style.display = '';
-  document.getElementById('autoStatus').style.display = '';
   fileSnapshot.clear();
   // Auto-attach icons subfolder if it exists
   try {
@@ -793,19 +856,30 @@ async function scanFolder(isInitial) {
 }
 
 async function tryLoadDataFromFolder(jsonFiles) {
-  const wanted = {
-    'pg_items.json':'items', 'pg_recipes.json':'recipes', 'pg_itemuses.json':'itemuses',
-    'pg_sources_recipes.json':'sources_recipes', 'pg_sources_items.json':'sources_items',
-    'pg_npcs.json':'npcs', 'pg_storagevaults.json':'vaults', 'pg_quests.json':'quests',
-    'pg_landmarks.json':'landmarks', 'pg_npc_training.json':'npc_training'
-  };
+  // Build lookup: filename → DATA_FILES entry, for root-level pg_ files
+  const rootWanted = {};
+  for (const df of DATA_FILES) {
+    if (!df.originals) rootWanted[df.file] = df;
+  }
   for (const f of jsonFiles) {
-    if (!wanted[f.name]) continue;
-    const key = wanted[f.name];
-    if (dataLoaded[key]) continue;
+    const df = rootWanted[f.name];
+    if (!df || dataLoaded[df.key]) continue;
     try {
-      const text = await f.file.text();
-      applyGameData(key, JSON.parse(text));
+      const raw = JSON.parse(await f.file.text());
+      applyGameData(df.key, raw); // pg_ files are already in processed format
+    } catch(e) {}
+  }
+
+  // Load originals from the Originals/ subfolder
+  if (!folderHandle) return;
+  let originalsDir;
+  try { originalsDir = await folderHandle.getDirectoryHandle('Originals'); } catch(e) { return; }
+  for (const df of DATA_FILES) {
+    if (!df.originals || dataLoaded[df.key]) continue;
+    try {
+      const fh = await originalsDir.getFileHandle(df.file);
+      const raw = JSON.parse(await (await fh.getFile()).text());
+      applyGameData(df.key, processCDNData(df.key, raw));
     } catch(e) {}
   }
 }
@@ -1162,7 +1236,9 @@ function hideRecipeSourceTooltip() {
 // ═══════════════════════════════════════════════════════════
 function setMainTab(tab) {
   mainTab = tab;
-  if (tab === 'survey' || tab === 'safecracking') surveyConnect();
+  if (tab !== 'tools' || toolsSubTab !== 'gardening') stopGardenRefresh();
+  else startGardenRefresh();
+  if (tab === 'tools' && toolsSubTab === 'survey') surveyConnect();
   clearExpandedSources();
   expandedAvailWOs.clear();
   expandedWOs.clear();
@@ -1175,6 +1251,7 @@ function setMainTab(tab) {
   if (activeCharId === '__availwo__' && !supportsAvail.has(tab)) activeCharId = characters[0]?.id || null;
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('nav-' + tab)?.classList.add('active');
+  document.getElementById('main-nav')?.classList.remove('nav-open');
   // Update settings button highlight
   const sb = document.getElementById('hdr-settings-btn');
   if (sb) sb.style.borderColor = tab === 'settings' ? 'var(--gold-dim)' : 'var(--border)';
@@ -1202,8 +1279,7 @@ function renderAll() {
   else if (mainTab === 'quests')     renderQuestsTab();
   else if (mainTab === 'maps')       renderMapsTab();
   else if (mainTab === 'settings')   renderSettingsTab();
-  else if (mainTab === 'survey')        renderSurveyTab();
-  else if (mainTab === 'safecracking')  renderSafecrackingTab();
+  else if (mainTab === 'tools')         renderToolsTab();
 }
 
 function renderCharTabs() {
@@ -1392,6 +1468,20 @@ function renderItemRow(name, vaults, total, typeId, value, query, charLabel, con
   </tr>`;
 }
 
+function calcVaultSlotInfo(vaultKey, charItems, charNPCs) {
+  // usedSlots: count all items in this vault (ignoring search), ceil(qty/maxStack) each
+  const vaultItems = charItems.filter(i => i.vaults[vaultKey] !== undefined);
+  const usedSlots = vaultItems.reduce((sum, i) => {
+    const qty = i.vaults[vaultKey] || 0;
+    const ms = getMaxStack(i.name, i.typeId) || 1;
+    return sum + Math.ceil(qty / ms);
+  }, 0);
+  // availSlots: from VAULTS data (favor-gated for NPC vaults)
+  const vd = VAULTS[vaultKey];
+  const availSlots = vd ? getCurrentSlots(vaultKey, charNPCs, vd) : null;
+  return { usedSlots, availSlots };
+}
+
 function renderRight(char) {
   const q = searchQuery.toLowerCase().trim();
   const allVaults = [...new Set(char.items.flatMap(i=>Object.keys(i.vaults)))]
@@ -1403,8 +1493,23 @@ function renderRight(char) {
   const rows = items.map(i=>renderItemRow(i.name,i.vaults,i.total,i.typeId,i.value,q,null,getConsolidationInfo(i.name,i.vaults,i.typeId))).join('');
   const totalValue = items.reduce((s,i)=>s+(i.value||0)*i.total, 0);
   const totalValueHtml = totalValue > 0
-    ? `<div style="margin-bottom:10px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
+    ? `<div style="margin-bottom:8px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
+
+  // Slot usage — only when a specific vault is selected and it's not Inventory
+  let slotInfoHtml = '';
+  if (activeVaultFilter && activeVaultFilter !== 'Inventory' && dataLoaded.vaults) {
+    const { usedSlots, availSlots } = calcVaultSlotInfo(activeVaultFilter, char.items, char.charData.NPCs || {});
+    const full = availSlots != null && usedSlots >= availSlots;
+    const slotColor = full ? '#e07070' : usedSlots >= (availSlots ?? Infinity) * 0.9 ? 'var(--orange)' : 'var(--gold-light)';
+    const slotStr = availSlots != null ? `${usedSlots} / ${availSlots}` : `${usedSlots} used`;
+    const pct = availSlots > 0 ? Math.min(100, usedSlots / availSlots * 100) : 0;
+    slotInfoHtml = `<div style="margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px">Slots: <span style="color:${slotColor};font-family:'Cinzel',serif">${slotStr}</span>${full ? ' <span style="color:#e07070;font-size:11px">FULL</span>' : ''}</div>
+      ${availSlots != null ? `<div style="background:var(--bg3);border-radius:3px;height:5px;overflow:hidden;max-width:200px"><div style="height:100%;width:${pct.toFixed(1)}%;background:${slotColor};border-radius:3px;transition:width .3s"></div></div>` : ''}
+    </div>`;
+  }
+
   document.getElementById('rightPanel').innerHTML = `
     <div class="search-wrap">
       ${renderModeToggle()}
@@ -1416,7 +1521,7 @@ function renderRight(char) {
     </div>
     <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${char.items.length}</span> items${activeVaultFilter?` · <span style="color:${vc(activeVaultFilter).text}">${fvn(activeVaultFilter)}</span>`:''}</div></div>
     ${renderVaultFilters(allVaults)}
-    ${totalValueHtml}
+    ${totalValueHtml}${slotInfoHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
     :`<table class="inv-table"><thead><tr><th>Item</th><th>Location</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody></table>`}`;
   restoreFocus(q);
@@ -1468,6 +1573,13 @@ function renderRightAll() {
 }
 
 function restoreFocus(q) { const i=document.getElementById('searchInput');i?.focus();i?.setSelectionRange(i.value.length,i.value.length); }
+function toggleNavMenu() { document.getElementById('main-nav')?.classList.toggle('nav-open'); }
+function updateHeaderChar() {
+  const el = document.getElementById('headerChar');
+  if (!el) return;
+  if (currentLogChar) { el.textContent = currentLogChar; el.style.display = ''; }
+  else { el.style.display = 'none'; }
+}
 
 // ═══════════════════════════════════════════════════════════
 // ITEM TOOLTIP
@@ -2244,18 +2356,72 @@ function buildFavorTrainingPanel(npcKey, chars) {
 
 // ── Player log parsing ──────────────────────────────────────
 
+function fmtAgo(ts) {
+  if (!ts) return '?';
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function detectGardenStage(action) {
+  // Detect stage from the ActionLabel arg of ProcessUpdateDescription
+  // e.g. "Water Onion" → thirsty, "Fertilize Cotton Plant" → needs_fertilizer
+  //      "Harvest Potato" → ripe, "Pick Cotton Plant" → ripe (cotton uses Pick)
+  const a = action.toLowerCase();
+  if (a.startsWith('harvest') || a.startsWith('pick')) return 'ripe';
+  if (a.startsWith('water')) return 'thirsty';
+  if (a.startsWith('fertilize') || a.startsWith('feed')) return 'needs_fertilizer';
+  return 'growing'; // "Check ..." or anything else
+}
+
 function loadPlayerLogData() {
   try {
     const s = localStorage.getItem('pgPlayerLogData');
-    if (s) { const p = JSON.parse(s); playerLogData = p.data || {}; currentLogChar = p.char || ''; }
+    if (s) { const p = JSON.parse(s); playerLogData = p.data || {}; currentLogChar = p.char || ''; updateHeaderChar(); }
     // Migrate old keys
     localStorage.removeItem('pgPlayerLogNpcs');
     localStorage.removeItem('pgPlayerLogNpcIdMap');
   } catch(e) {}
+  try {
+    const g = localStorage.getItem('pgGardenData');
+    if (g) gardenData = JSON.parse(g) || {};
+  } catch(e) {}
+  gardenSessionActive = localStorage.getItem('gardenSessionActive') === '1';
+  const savedPos = parseInt(localStorage.getItem('pgPlayerLogPos') || '0', 10);
+  if (savedPos > 0) playerLogFileSize = savedPos;
 }
 
 function savePlayerLogData() {
   try { localStorage.setItem('pgPlayerLogData', JSON.stringify({ data: playerLogData, char: currentLogChar })); } catch(e) {}
+  try { localStorage.setItem('pgGardenData', JSON.stringify(gardenData)); } catch(e) {}
+  try { localStorage.setItem('pgPlayerLogPos', String(playerLogFileSize)); } catch(e) {}
+}
+
+// Garden harvest helpers — module-scope so they can be called from inside the parse loop
+// without re-declaring on every iteration (which causes strict-mode errors).
+function _gardenMarkHarvested(char, plotId) {
+  const plot = gardenData[char]?.plots?.[plotId];
+  if (plot && plot.stage !== 'harvested') {
+    plot.stage = 'harvested';
+    plot.updatedAt = Date.now();
+    return true;
+  }
+  return false;
+}
+function _gardenMarkRipeByType(char, cropType) {
+  const plots = gardenData[char]?.plots;
+  if (!plots) return false;
+  let oldest = null, oldestId = null;
+  for (const [id, p] of Object.entries(plots)) {
+    if (p.stage === 'ripe' && p.cropType === cropType) {
+      if (!oldest || (p.updatedAt || 0) < (oldest.updatedAt || 0)) { oldest = p; oldestId = id; }
+    }
+  }
+  if (oldestId) { plots[oldestId].stage = 'harvested'; plots[oldestId].updatedAt = Date.now(); return true; }
+  return false;
 }
 
 function parsePlayerLogLines(lines) {
@@ -2263,33 +2429,225 @@ function parsePlayerLogLines(lines) {
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; continue; }
+    if (m) { currentLogChar = m[1]; updateHeaderChar(); continue; }
+
+    // Always track owned pet IDs regardless of char state — so thirsty events later
+    // can be matched even if currentLogChar was empty when the seed was planted
+    { const om = line.match(/LocalPlayer: ProcessSetPetOwner\((\d+),/); if (om) playerOwnedPetIds.add(om[1]); }
 
     const char = currentLogChar;
     if (!char) continue;
     if (!playerLogData[char]) playerLogData[char] = { npcs: {}, idMap: {} };
     const d = playerLogData[char];
 
-    // Learn id→npcKey from ProcessStartInteraction(id, ..., "NPC_Name")
-    m = line.match(/ProcessStartInteraction\((\d+),.*?"(NPC_\w+)"\)/);
-    if (m) { d.idMap[m[1]] = m[2]; continue; }
-    // ProcessDeltaFavor(id, "NPC_Name", favorValue, ...) — learn mapping AND store exact favor
-    m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)",\s*([\d.]+)/);
+    // ProcessStartInteraction(id, ?, absoluteFavor, bool, "NPC_Name") — capture absolute favor
+    m = line.match(/ProcessStartInteraction\((\d+),\s*\d+,\s*([\d.-]+),\s*\w+,\s*"(NPC_\w+)"\)/);
     if (m) {
-      d.idMap[m[1]] = m[2];
-      if (!d.npcs[m[2]]) d.npcs[m[2]] = { loggedAt: Date.now() };
-      d.npcs[m[2]].exactFavor = parseFloat(m[3]);
-      d.npcs[m[2]].loggedAt = Date.now();
-      vendorCount++;
+      const npcKey = m[3];
+      d.idMap[m[1]] = npcKey;
+      const absF = parseFloat(m[2]);
+      if (!isNaN(absF)) {
+        if (!d.npcs[npcKey]) d.npcs[npcKey] = { loggedAt: Date.now() };
+        const prev = d.npcs[npcKey].exactFavor;
+        d.npcs[npcKey].exactFavor = absF;
+        d.npcs[npcKey].loggedAt = Date.now();
+        if (prev !== absF) {
+          const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
+          showToast(`↑ ${displayName} updated`);
+        }
+        vendorCount++;
+      }
       continue;
     }
+    // ProcessDeltaFavor — only used for id→npcKey mapping
+    m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)"/);
+    if (m) { d.idMap[m[1]] = m[2]; continue; }
     // Vendor data: ProcessVendorScreen(id, favorLevel, currentGold, resetAt, maxGold, ...)
     m = line.match(/ProcessVendorScreen\((\d+),\s*(\w+),\s*(\d+),\s*(\d+),\s*(\d+)/);
     if (m) {
       const npcKey = d.idMap[m[1]];
       if (npcKey) {
-        d.npcs[npcKey] = { currentGold: +m[3], maxGold: +m[5], resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
+        const prevGold = d.npcs[npcKey]?.currentGold;
+        d.npcs[npcKey] = { ...(d.npcs[npcKey] || {}), currentGold: +m[3], maxGold: +m[5], resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
+        if (prevGold !== +m[3]) {
+          const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
+          showToast(`↑ ${displayName} updated`);
+        }
         vendorCount++;
+      }
+      continue;
+    }
+    // Appearance loop: track last clean crop name for planted-stage detection
+    // Format: "Download appearance loop @ModelName(scale=N)" — alpha-only names are decodable crop names
+    m = line.match(/Download appearance loop @([A-Za-z0-9]+)\(scale=/);
+    if (m) {
+      const model = m[1];
+      if (/\d/.test(model)) {
+        // Digit-containing model (Flower11, Flower7 = cotton) — can't decode crop name; clear pending
+        lastCropAsset = null;
+        pendingPlantForCrop = null;
+      } else {
+        if (lastCropAssetUsed) {
+          // "is done" line for a crop already consumed by a pending fill — clear to prevent bleed into next plant
+          lastCropAsset = null;
+          lastCropAssetUsed = false;
+        } else {
+          lastCropAsset = model;
+          lastCropAssetTime = Date.now();
+          // If a plot is waiting for its crop name, fill it in now
+          if (pendingPlantForCrop && gardenData[pendingPlantForCrop.charName]?.plots?.[pendingPlantForCrop.plotId]) {
+            gardenData[pendingPlantForCrop.charName].plots[pendingPlantForCrop.plotId].cropType = model;
+            pendingPlantForCrop = null;
+            lastCropAssetUsed = true; // mark consumed so next "is done" for same plant is ignored
+            vendorCount++;
+          }
+        }
+      }
+    }
+
+    // Track entity IDs for plants WE planted (LocalPlayer: prefix = our action)
+    m = line.match(/LocalPlayer: ProcessSetPetOwner\((\d+),/);
+    if (m) {
+      const plotId = m[1];
+      playerOwnedPetIds.add(plotId);
+      if (gardenSessionActive && char) {
+        if (!gardenData[char]) gardenData[char] = { plots: {} };
+        if (!gardenData[char].plots[plotId]) {
+          // Use lastCropAsset only if fresh (≤5s) and not already consumed, AND the slot isn't full.
+          // The slot check is key: if e.g. Carrot slot is 2/2, the next plant can't be a Carrot —
+          // even if a Carrot appearance loop fired recently (from an existing plant's scale update).
+          const rawCrop = (lastCropAsset && !lastCropAssetUsed && (Date.now() - lastCropAssetTime) < 5000) ? lastCropAsset : null;
+          const crop = (rawCrop && !isGardenSlotFull(rawCrop, char)) ? rawCrop : null;
+          gardenData[char].plots[plotId] = {
+            cropType: crop, stage: 'planted', description: '', title: '', action: '', scale: 0,
+            plantedAt: Date.now(), firstSeenAt: Date.now(), updatedAt: Date.now(),
+            totalPausedMs: 0, pausedAt: null,
+          };
+          // If we couldn't get the crop from appearance (cached crop fires before SetPetOwner),
+          // set a pending so the NEXT appearance loop line can fill it in
+          pendingPlantForCrop = crop === null ? { plotId, charName: char } : null;
+          lastCropAsset = null;      // consume so stale name doesn't bleed into next plant
+          lastCropAssetUsed = false; // reset — next appearance loop can populate fresh
+          vendorCount++;
+        }
+      }
+    }
+
+    // Garden events — only when a session is active
+    if (gardenSessionActive) {
+      // ProcessUpdateDescription with Scale= pattern uniquely identifies garden plant entities
+      // Format: ProcessUpdateDescription(id, "Title", "Desc", "ActionLabel", Type, "ModelName(Scale=N)", 0)
+      // Model name may contain digits (e.g. Flower11 for cotton); crop name extracted from action label
+      m = line.match(/ProcessUpdateDescription\((\d+),\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*\w+,\s*"[\w]+\(Scale=([\d.]+)\)",\s*\d+\)/);
+      if (m) {
+        const plotId = m[1], title = m[2], desc = m[3], action = m[4], scale = parseFloat(m[5]);
+        const alreadyKnown = !!gardenData[char]?.plots?.[plotId];
+        // Reject plants we didn't plant: not in gardenData AND not in our owned pet set
+        if (!alreadyKnown && !playerOwnedPetIds.has(plotId)) continue;
+        // Crop name = action label with the leading verb stripped: "Water Onion" → "Onion", "Pick Cotton Plant" → "Cotton Plant"
+        const cropType = action.replace(/^\w+\s+/, '');
+        if (!gardenData[char]) gardenData[char] = { plots: {} };
+        const existing = gardenData[char].plots[plotId];
+        const newStage = detectGardenStage(action);
+        const wasPaused = existing?.stage === 'thirsty' || existing?.stage === 'needs_fertilizer';
+        const nowPaused = newStage === 'thirsty' || newStage === 'needs_fertilizer';
+        let totalPausedMs = existing?.totalPausedMs || 0;
+        let pausedAt = existing?.pausedAt || null;
+        if (nowPaused && !wasPaused) {
+          pausedAt = Date.now(); // just became thirsty/hungry — start pause
+        } else if (!nowPaused && wasPaused && pausedAt) {
+          totalPausedMs += Date.now() - pausedAt; // resumed — accumulate pause
+          pausedAt = null;
+        } else if (!nowPaused) {
+          pausedAt = null;
+        }
+        gardenData[char].plots[plotId] = {
+          cropType, title, description: desc, action, scale,
+          stage: newStage,
+          plantedAt: existing?.plantedAt || null,
+          totalPausedMs, pausedAt,
+          firstSeenAt: existing?.firstSeenAt || Date.now(),
+          updatedAt: Date.now(),
+        };
+        vendorCount++;
+        continue;
+      }
+      // Garden harvest detection — four-tier approach:
+      //
+      // Tier 1 (PRIMARY): StartInteraction(plotId) → plot already 'ripe' → immediate harvest.
+      //   Also arms pendingHarvestPlotId for tiers 2/3 when stage wasn't tracked as ripe yet.
+      //
+      // Tier 2: ProcessAddItem(CropName(itemId)) while pendingHarvestPlotId set → harvest confirmed.
+      //   Also records itemId→cropType in gardenItemCropMap for tier 4.
+      //
+      // Tier 3: ProcessUpdateSkill(Gardening) while pendingHarvestPlotId set → catch-all harvest.
+      //   Fires even when UpdateItemCode is used instead of AddItem (second harvest of same type).
+      //
+      // Tier 4 (NO-STARTINTERACTION): ProcessUpdateItemCode(itemId) whose itemId is in
+      //   gardenItemCropMap, followed immediately by Gardening XP with NO pendingHarvestPlotId.
+      //   Handles the case where ProcessStartInteraction wasn't logged (quick/simultaneous actions).
+      //   lastUpdateItemCropType carries the crop name from UpdateItemCode into the XP line.
+      //
+      // Clearing: ProcessScreenText(ErrorMessage) clears pendingHarvestPlotId and
+      //   lastUpdateItemCropType — the interaction failed, not a harvest.
+
+      // Tier 1 — StartInteraction for a Summoned entity
+      m = line.match(/ProcessStartInteraction\((\d+),\s*\d+,\s*[\d.-]+,\s*\w+,\s*"(Summoned\w+)"\)/);
+      if (m) {
+        const plotId = m[1];
+        const plot = gardenData[char]?.plots?.[plotId];
+        lastUpdateItemCropType = null; // new interaction resets tier-4 state
+        if (plot) {
+          if (plot.stage === 'ripe') {
+            if (_gardenMarkHarvested(char, plotId)) vendorCount++;
+            pendingHarvestPlotId = null;
+          } else {
+            pendingHarvestPlotId = plotId;
+          }
+        } else {
+          pendingHarvestPlotId = null;
+        }
+        continue;
+      }
+
+      // Clear pending on failed interaction (plant still growing / some other error)
+      if (line.includes('ProcessScreenText(ErrorMessage')) {
+        pendingHarvestPlotId = null;
+        lastUpdateItemCropType = null;
+        continue;
+      }
+
+      // Tier 2 — ProcessAddItem: record itemId→cropType AND confirm harvest if pending
+      m = line.match(/LocalPlayer: ProcessAddItem\((\w[\w\s]*)\((\d+)\)/);
+      if (m) {
+        const itemName = m[1].trimEnd(), itemId = m[2];
+        for (const cropType of Object.keys(GARDEN_SLOT_MAP)) {
+          if (itemName.toLowerCase().startsWith(cropType.split(' ')[0].toLowerCase())) {
+            gardenItemCropMap[itemId] = cropType; break;
+          }
+        }
+        if (pendingHarvestPlotId) {
+          const plot = gardenData[char]?.plots?.[pendingHarvestPlotId];
+          if (plot?.cropType && itemName.toLowerCase().startsWith(plot.cropType.split(' ')[0].toLowerCase())) {
+            if (_gardenMarkHarvested(char, pendingHarvestPlotId)) vendorCount++;
+            pendingHarvestPlotId = null; lastUpdateItemCropType = null;
+          }
+        }
+      }
+
+      // Tier 4 — ProcessUpdateItemCode: look up itemId→cropType for no-StartInteraction path
+      m = line.match(/LocalPlayer: ProcessUpdateItemCode\((\d+),/);
+      if (m) { const ct = gardenItemCropMap[m[1]]; if (ct) lastUpdateItemCropType = ct; }
+
+      // Tier 3 + 4 — Gardening XP: definitive harvest signal (never fires for water/fertilize)
+      if (line.includes('ProcessUpdateSkill') && line.includes('type=Gardening')) {
+        if (pendingHarvestPlotId) {
+          if (_gardenMarkHarvested(char, pendingHarvestPlotId)) vendorCount++;
+          pendingHarvestPlotId = null; lastUpdateItemCropType = null;
+        } else if (lastUpdateItemCropType) {
+          if (_gardenMarkRipeByType(char, lastUpdateItemCropType)) vendorCount++;
+          lastUpdateItemCropType = null;
+        }
       }
     }
   }
@@ -2334,10 +2692,19 @@ async function pollPlayerLog() {
     if (file.size <= playerLogFileSize) return;
     const blob = file.slice(playerLogFileSize);
     const text = await blob.text();
-    playerLogFileSize = file.size;
-    const lines = text.split('\n');
+    // Only process up to the last complete newline — if the game is mid-write on a line
+    // when we poll, that partial line would never match any regex, and its continuation
+    // bytes would be skipped on the next read (since playerLogFileSize already passed them).
+    // By stopping at the last '\n' we ensure every line we parse is complete.
+    const lastNL = text.lastIndexOf('\n');
+    if (lastNL < 0) return; // no complete line yet — wait for more
+    const processText = text.slice(0, lastNL + 1);
+    // Log files are ASCII so char length ≈ byte length; use TextEncoder to be safe
+    playerLogFileSize += new TextEncoder().encode(processText).byteLength;
+    const lines = processText.split('\n');
     const count = parsePlayerLogLines(lines);
     if (count > 0 && mainTab === 'favors') renderFavorsTab();
+    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
     if (mainTab === 'settings') renderSettingsTab();
   } catch(e) {
     // File moved or permission lost
@@ -2345,6 +2712,8 @@ async function pollPlayerLog() {
     if (mainTab === 'settings') renderSettingsTab();
   }
 }
+
+let playerLogPendingHandle = null; // stored when permission needs re-granting
 
 async function resumePlayerLogWatch() {
   try {
@@ -2355,17 +2724,43 @@ async function resumePlayerLogWatch() {
       playerLogFileHandle = handle;
       playerLogWatchActive = true;
       startPlayerLogWatcher();
+    } else {
+      // Permission needs re-granting — store handle and surface a resume button
+      playerLogPendingHandle = handle;
+      if (mainTab === 'settings') renderSettingsTab();
+    }
+  } catch(e) {}
+}
+
+async function resumePlayerLog() {
+  const handle = playerLogPendingHandle;
+  if (!handle) return;
+  try {
+    const perm = await handle.requestPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      playerLogPendingHandle = null;
+      playerLogFileHandle = handle;
+      // keep playerLogFileSize from restored value — don't reset to 0
+      playerLogWatchActive = true;
+      await dbPut('player_log_handle', 'handle', handle);
+      startPlayerLogWatcher();
+      if (mainTab === 'settings') renderSettingsTab();
     }
   } catch(e) {}
 }
 
 function clearPlayerLogData() {
   playerLogData = {};
+  gardenData = {};
   currentLogChar = '';
+  updateHeaderChar();
   playerLogLastUpdate = 0;
   localStorage.removeItem('pgPlayerLogData');
+  localStorage.removeItem('pgGardenData');
+  localStorage.removeItem('pgPlayerLogPos');
   if (mainTab === 'settings') renderSettingsTab();
   if (mainTab === 'favors') renderFavorsTab();
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
 }
 
 function formatGoldReset(resetAt) {
@@ -2387,7 +2782,7 @@ function formatGoldReset(resetAt) {
 function buildFavorVendorPanel(npcKey, charName) {
   const charData = charName ? playerLogData[charName] : null;
   const v = charData?.npcs[npcKey];
-  if (!v) return '';
+  if (!v || v.currentGold == null) return '';
   const pct = v.maxGold > 0 ? Math.round(v.currentGold / v.maxGold * 100) : 0;
   const goldColor = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
   const resetStr = formatGoldReset(v.resetAt);
@@ -2636,10 +3031,12 @@ function renderFavorCell(favor, exactFavor) {
   const fc = FAVOR_COLORS[favor] || FAVOR_COLORS.Neutral;
   const displayName = favor.replace(/([A-Z])/g,' $1').trim();
   let pct, subHtml = '';
-  if (exactFavor != null && FAVOR_TIER_CAPS[favor] != null) {
+  if (exactFavor != null && FAVOR_TIER_FLOORS[favor] != null && FAVOR_TIER_CAPS[favor] != null) {
+    const floor = FAVOR_TIER_FLOORS[favor];
     const cap = FAVOR_TIER_CAPS[favor];
-    pct = Math.min(100, (exactFavor / cap) * 100);
-    subHtml = `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${exactFavor.toFixed(1)} / ${cap}</div>`;
+    const withinTier = exactFavor - floor;
+    pct = Math.min(100, (withinTier / cap) * 100);
+    subHtml = `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${Math.round(withinTier)} / ${cap}</div>`;
   } else {
     pct = FAVOR_PCT[favor] ?? 0;
   }
@@ -2817,13 +3214,21 @@ function getLandmarkOverride(areaKey, lmName) {
   return mapLandmarkOverrides[areaKey]?.[lmName] || fileMapOverrides.landmarks?.[areaKey]?.[lmName] || null;
 }
 async function fetchMapOverrides() {
+  let data = null;
   try {
     const r = await fetch('pg_map_overrides.json');
-    if (!r.ok) return;
-    const data = await r.json();
-    fileMapOverrides = { npcs: data.npcs || {}, landmarks: data.landmarks || {} };
-    if (document.querySelector('.map-outer')) renderMapsTab(); // refresh if map is open
+    if (r.ok) data = await r.json();
   } catch(e) {}
+  // Fallback: read via File System Access API (needed when opened as file://)
+  if (!data && folderHandle) {
+    try {
+      const fh = await folderHandle.getFileHandle('pg_map_overrides.json');
+      data = JSON.parse(await (await fh.getFile()).text());
+    } catch(e) {}
+  }
+  if (!data) return;
+  fileMapOverrides = { npcs: data.npcs || {}, landmarks: data.landmarks || {} };
+  if (document.querySelector('.map-outer')) renderMapsTab();
 }
 function exportMapOverrides() {
   // Merge file base with localStorage edits (localStorage wins per-marker)
@@ -2924,21 +3329,24 @@ fetchMapOverrides();
 // Map configurations: world coordinate bounds per area (derived from NPC + landmark data, 1 game unit ≈ 1 pixel)
 // Calibrated areas have worldMinX/Z + worldMaxX/Z. Uncalibrated areas show map only (no NPC markers).
 const MAP_CONFIGS = {
-  // === Outdoor Areas (auto-calibrated from NPC + landmark data) ===
-  AreaSerbule:      { name: 'Serbule',           image: 'Maps/Map_AreaSerbule.jpg',       worldMinX: 193.2, worldMaxX: 2575.85, worldMinZ: 273.06, worldMaxZ: 2761.56 },
-  AreaSerbule2:     { name: 'Serbule Hills',      image: 'Maps/Map_AreaSerbule2.jpg',      worldMinX: 105,   worldMaxX: 2429,  worldMinZ: 238,   worldMaxZ: 3021 },
-  AreaEltibule:     { name: 'Eltibule',           image: 'Maps/Map_AreaEltibule.jpg',      worldMinX: 227,   worldMaxX: 2762,  worldMinZ: 60,    worldMaxZ: 3136,  rotate180: true },
-  AreaKurMountains: { name: 'Kur Mountains',      image: 'Maps/Map_AreaKurMountains.jpg',  worldMinX: 3847.5, worldMaxX: 253.0, worldMinZ: 3847.7, worldMaxZ: 251.7 },
-  AreaSunVale:      { name: 'Sun Vale',           image: 'Maps/Map_AreaSunVale.jpg',       worldMinX: -1858, worldMaxX: 1911,  worldMinZ: -1738, worldMaxZ: 1899 },
-  AreaDesert1:      { name: 'Ilmari Desert',      image: 'Maps/Map_AreaDesert1.jpg',       worldMinX: -1504, worldMaxX: 712,   worldMinZ: -1861, worldMaxZ: 792  },
-  AreaRahu:         { name: 'Rahu',               image: 'Maps/Map_AreaRahu.jpg',          worldMinX: -9,    worldMaxX: 1705,  worldMinZ: -1268, worldMaxZ: 637  },
-  AreaGazluk:       { name: 'Gazluk Plateau',     image: 'Maps/Map_AreaGazluk.jpg',        worldMinX: -2437, worldMaxX: 1984,  worldMinZ: -2285, worldMaxZ: 2635 },
-  AreaPovus:        { name: 'Povus',              image: 'Maps/Map_Povus.jpg',             worldMinX: 55,    worldMaxX: 2748,  worldMinZ: 110,   worldMaxZ: 2653 },
-  AreaVidaria:      { name: 'Vidaria',            image: 'Maps/Map_Vidaria.jpg',           worldMinX: 20,    worldMaxX: 2773,  worldMinZ: -7,    worldMaxZ: 2743 },
-  AreaFaeRealm1:    { name: 'Fae Realm',          image: 'Maps/Map_AreaFaeRealm1.jpg',     worldMinX: 330,   worldMaxX: 2697,  worldMinZ: 56,    worldMaxZ: 3075 },
-  AreaNewbieIsland: { name: 'Anagoge Island',     image: 'Maps/Map_AreaNewbieIsland.jpg',  worldMinX: 145,   worldMaxX: 310,   worldMinZ: 318,   worldMaxZ: 400  },
-  AreaStatehelm:    { name: 'Statehelm',          image: 'Maps/Map_AreaStatehelm.jpg',     worldMinX: -144,  worldMaxX: 1146,  worldMinZ: 142,   worldMaxZ: 1652 },
-  AreaCasino:       { name: 'Red Wing Casino',    image: 'Maps/Map_AreaCasino.jpg',        worldMinX: -136,  worldMaxX: 110,   worldMinZ: 6,     worldMaxZ: 231  },
+  // === Outdoor Areas (calibrated from wiki marked maps + landmarks.json, 2026-03-29) ===
+  // Serbule & Kur: exact corner-pin calibration (most precise)
+  AreaSerbule:      { name: 'Serbule',           image: 'Maps/Map_AreaSerbule.jpg',       worldMinX: 193.2,   worldMaxX: 2575.85, worldMinZ: 273.06,  worldMaxZ: 2761.56 },
+  AreaKurMountains: { name: 'Kur Mountains',      image: 'Maps/Map_AreaKurMountains.jpg',  worldMinX: 3847.5,  worldMaxX: 253.0,   worldMinZ: 3847.7,  worldMaxZ: 251.7   },
+  // Wiki-calibrated (n=landmarks matched, ~50-90px residual)
+  AreaSerbule2:     { name: 'Serbule Hills',      image: 'Maps/Map_AreaSerbule2.jpg',      worldMinX: 86.8,    worldMaxX: 2438.9,  worldMinZ: 211.9,   worldMaxZ: 3073.0  },
+  AreaEltibule:     { name: 'Eltibule',           image: 'Maps/Map_AreaEltibule.jpg',      worldMinX: 135.9,   worldMaxX: 2813.7,  worldMinZ: 266.0,   worldMaxZ: 2927.4, rotate180: true },
+  AreaSunVale:      { name: 'Sun Vale',           image: 'Maps/Map_AreaSunVale.jpg',       worldMinX: -1995.6, worldMaxX: 1996.4,  worldMinZ: -1967.1, worldMaxZ: 1999.4  },
+  AreaDesert1:      { name: 'Ilmari Desert',      image: 'Maps/Map_AreaDesert1.jpg',       worldMinX: -1533.9, worldMaxX: 638.6,   worldMinZ: -1855.2, worldMaxZ: 751.9   },
+  AreaRahu:         { name: 'Rahu',               image: 'Maps/Map_AreaRahu.jpg',          worldMinX: 35.8,    worldMaxX: 1753.2,  worldMinZ: -1178.5, worldMaxZ: 589.9   },
+  AreaGazluk:       { name: 'Gazluk Plateau',     image: 'Maps/Map_AreaGazluk.jpg',        worldMinX: -2357.6, worldMaxX: 2358.5,  worldMinZ: 2337.5,  worldMaxZ: -2388.3 }, // inverted Z (low Z = top of image)
+  AreaPovus:        { name: 'Povus',              image: 'Maps/Map_Povus.jpg',             worldMinX: 201.8,   worldMaxX: 2595.7,  worldMinZ: 176.5,   worldMaxZ: 2772.4  },
+  AreaFaeRealm1:    { name: 'Fae Realm',          image: 'Maps/Map_AreaFaeRealm1.jpg',     worldMinX: 339.8,   worldMaxX: 2656.8,  worldMinZ: 74.1,    worldMaxZ: 3122.7  },
+  AreaStatehelm:    { name: 'Statehelm',          image: 'Maps/Map_AreaStatehelm.jpg',     worldMinX: 51.1,    worldMaxX: 1649.2,  worldMinZ: 1551.3,  worldMaxZ: -46.3,  swapXZ: true },
+  // Uncalibrated (no wiki map or no landmarks)
+  AreaVidaria:      { name: 'Vidaria',            image: 'Maps/Map_Vidaria.jpg',           worldMinX: 200.8,   worldMaxX: 2595.6,  worldMinZ: 178.5,   worldMaxZ: 2772.5  },
+  AreaNewbieIsland: { name: 'Anagoge Island',     image: 'Maps/Map_AreaNewbieIsland.jpg',  worldMinX: 145,     worldMaxX: 310,     worldMinZ: 318,     worldMaxZ: 400     },
+  AreaCasino:       { name: 'Red Wing Casino',    image: 'Maps/Map_AreaCasino.jpg',        worldMinX: -136,    worldMaxX: 110,     worldMinZ: 6,       worldMaxZ: 231     },
   // === Dungeons & Caves ===
   AreaCave1:        { name: 'Goblin Dungeon',     image: 'Maps/Map_GoblinDungeon.jpg',     worldMinX: -1467, worldMaxX: 2795,  worldMinZ: -1949, worldMaxZ: 700  },
   AreaCave2:        { name: 'Wolf Cave',          image: 'Maps/Map_WolfCave.jpg',          worldMinX: -2488, worldMaxX: 2368,  worldMinZ: -2782, worldMaxZ: 1725 },
@@ -2967,14 +3375,38 @@ const MAP_CONFIGS = {
 };
 
 function worldToMapPct(x, z, cfg) {
-  let px = (x - cfg.worldMinX) / (cfg.worldMaxX - cfg.worldMinX) * 100;
-  let py = (1 - (z - cfg.worldMinZ) / (cfg.worldMaxZ - cfg.worldMinZ)) * 100;
+  // swapXZ: world Z drives horizontal (left↔right), world X drives vertical (top↔bottom)
+  const wx = cfg.swapXZ ? z : x;
+  const wz = cfg.swapXZ ? x : z;
+  let px = (wx - cfg.worldMinX) / (cfg.worldMaxX - cfg.worldMinX) * 100;
+  let py = (1 - (wz - cfg.worldMinZ) / (cfg.worldMaxZ - cfg.worldMinZ)) * 100;
   if (cfg.rotate180) { px = 100 - px; py = 100 - py; }
   return { x: Math.max(-2, Math.min(102, px)), y: Math.max(-2, Math.min(102, py)) };
 }
 
 function setMapArea(area) { currentMapArea = area; selectedMapNpcKey = null; mapZoom = 1.0; renderMapsTab(); }
-function selectMapNpc(key) { selectedMapNpcKey = (selectedMapNpcKey === key) ? null : key; renderMapsTab(); }
+function selectMapNpc(key) {
+  selectedMapNpcKey = (selectedMapNpcKey === key) ? null : key;
+
+  // Update NPC marker selected classes in-place (no scroll reset)
+  document.querySelectorAll('.map-npc-marker').forEach(el => {
+    el.classList.toggle('selected', el.dataset.key === selectedMapNpcKey);
+  });
+
+  // Update detail panel in-place
+  const panel = document.getElementById('map-npc-panel');
+  if (panel) {
+    const char = characters.find(c => c.id === activeCharId);
+    const legend = `<div style="color:var(--text-dim);font-size:12px;line-height:1.6;margin-top:4px">Click an NPC marker to see details.</div>
+      <div class="map-panel-section">Legend</div>
+      ${Object.entries(FAVOR_COLORS).map(([lvl, c]) =>
+        `<div class="map-legend-row"><div class="map-legend-dot" style="background:${c.bar}"></div>${lvl}</div>`
+      ).join('')}`;
+    panel.innerHTML = selectedMapNpcKey ? renderMapNpcDetail(selectedMapNpcKey, char) : legend;
+  } else {
+    renderMapsTab(); // fallback if panel not found (e.g. map not rendered yet)
+  }
+}
 function toggleMapLandmarks() { mapShowLandmarks = !mapShowLandmarks; renderMapsTab(); }
 function toggleMapLabels() { mapShowNpcLabels = !mapShowNpcLabels; renderMapsTab(); }
 
@@ -3367,6 +3799,12 @@ const FAVOR_TIER_CAPS = {
   BestFriends:  800,   // → Like Family
   LikeFamily:  1000,   // → Soul Mates
   SoulMates:   null,   // cap — no further tier
+};
+// Absolute favor value at the start of each tier (from game table)
+const FAVOR_TIER_FLOORS = {
+  Despised: -99999, Hatred: -600, Disliked: -300, Tolerated: -100,
+  Neutral: 0, Comfortable: 100, Friends: 300, CloseFriends: 600,
+  BestFriends: 1200, LikeFamily: 2000, SoulMates: 3000,
 };
 
 /**
@@ -4106,19 +4544,32 @@ function renderQuestsTab() {
       : `<div class="quest-grid">${cards}</div>`}
   </div>`;
 }
-const CDN_BASE = 'https://cdn.projectgorgon.com/v465/data/';
-const CDN_ICONS_BASE = 'https://cdn.projectgorgon.com/v456/icons/';
+const CDN_ROOT = 'https://cdn.projectgorgon.com/';
+let _cdnVersion = null; // auto-detected from redirect; fallback set below
+async function getCDNVersion() {
+  if (_cdnVersion) return _cdnVersion;
+  try {
+    const res = await fetch(CDN_ROOT);
+    const m = res.url.match(/\/(v\d+)\//);
+    if (m) { _cdnVersion = m[1]; return _cdnVersion; }
+  } catch(e) {}
+  _cdnVersion = 'v466'; // fallback if detection fails
+  return _cdnVersion;
+}
 const DATA_FILES = [
-  { key:'items',           file:'pg_items.json',           cdn:'items.json',           label:'Items Database',         desc:'Item names, max stack sizes' },
-  { key:'recipes',         file:'pg_recipes.json',         cdn:'recipes.json',         label:'Recipes Database',        desc:'All crafting recipes' },
-  { key:'itemuses',        file:'pg_itemuses.json',        cdn:'itemuses.json',        label:'Item Uses Database',      desc:'Which recipes use each item' },
-  { key:'sources_recipes', file:'pg_sources_recipes.json', cdn:'sources_recipes.json', label:'Recipe Sources',          desc:'How/where to learn each recipe' },
-  { key:'sources_items',   file:'pg_sources_items.json',   cdn:'sources_items.json',   label:'Item Sources',            desc:'Vendors, hangouts, gifts per item' },
-  { key:'npcs',            file:'pg_npcs.json',            cdn:'npcs.json',            label:'NPC Database',            desc:'NPC names, locations, services' },
-  { key:'vaults',          file:'pg_storagevaults.json',   cdn:'storagevaults.json',   label:'Storage Vaults Database', desc:'Vault slot counts and NPC levels' },
-  { key:'quests',          file:'pg_quests.json',          cdn:'quests.json',          label:'Quests Database',         desc:'Quest objectives and locations' },
-  { key:'landmarks',       file:'pg_landmarks.json',       cdn:null,                   label:'Landmarks Database',      desc:'Portals, pillars, and map points of interest' },
-  { key:'npc_training',   file:'pg_npc_training.json',    cdn:null,                   label:'NPC Training Database',   desc:'Per-recipe favor level and cost for trainers' },
+  // Files with CDN equivalents live in Originals/ and are synced directly from the game CDN.
+  // raw:true means the file is in the original CDN format and needs processCDNData() before applyGameData().
+  { key:'items',           file:'items.json',           originals:true, cdn:'items.json',           label:'Items',           desc:'Item names, max stack sizes' },
+  { key:'recipes',         file:'recipes.json',         originals:true, cdn:'recipes.json',         label:'Recipes',         desc:'All crafting recipes' },
+  { key:'itemuses',        file:'itemuses.json',        originals:true, cdn:'itemuses.json',         label:'Item Uses',       desc:'Which recipes use each item' },
+  { key:'sources_recipes', file:'sources_recipes.json', originals:true, cdn:'sources_recipes.json', label:'Recipe Sources',  desc:'How/where to learn each recipe' },
+  { key:'sources_items',   file:'sources_items.json',   originals:true, cdn:'sources_items.json',   label:'Item Sources',    desc:'Vendors, hangouts, gifts per item' },
+  { key:'npcs',            file:'npcs.json',            originals:true, cdn:'npcs.json',            label:'NPCs',            desc:'NPC names, locations, services' },
+  { key:'vaults',          file:'storagevaults.json',   originals:true, cdn:'storagevaults.json',   label:'Storage Vaults',  desc:'Vault slot counts and NPC levels' },
+  { key:'quests',          file:'quests.json',          originals:true, cdn:'quests.json',          label:'Quests',          desc:'Quest objectives and locations' },
+  // No CDN equivalent — loaded from pg_ files in the root folder
+  { key:'landmarks',       file:'landmarks.json',        originals:true,  cdn:'landmarks.json',      label:'Landmarks',       desc:'Portals, pillars, and map points of interest' },
+  { key:'npc_training',    file:'pg_npc_training.json', originals:false, cdn:null,                  label:'NPC Training',    desc:'Per-recipe favor level and cost for trainers' },
 ];
 
 // ── Icon system ──
@@ -4208,6 +4659,8 @@ async function downloadAllIcons() {
 
   const iconFolder = await getOrCreateIconsFolder();
   if (!iconFolder) return;
+  const cdnVer = await getCDNVersion();
+  const cdnIconsBase = `${CDN_ROOT}${cdnVer}/icons/`;
 
   // Collect all unique icon IDs from ITEMS_ICONS
   const allIconIds = [...new Set(Object.values(ITEMS_ICONS))].filter(Boolean);
@@ -4232,7 +4685,7 @@ async function downloadAllIcons() {
       } catch(e) {}
       // Download
       try {
-        const res = await fetch(`${CDN_ICONS_BASE}icon_${iconId}.png`);
+        const res = await fetch(`${cdnIconsBase}icon_${iconId}.png`);
         if (!res.ok) throw new Error(res.status);
         const blob = await res.blob();
         const fh = await iconFolder.getFileHandle(`icon_${iconId}.png`, { create: true });
@@ -4317,23 +4770,43 @@ function renderSettingsTab() {
     const loaded = dataLoaded[df.key];
     const statusClass = loaded ? 'ok' : 'missing';
     const statusText = loaded ? '✓ Loaded' : '✗ Not loaded';
+    const filePath = df.originals ? `Originals/${df.file}` : df.file;
+    const syncBtn = df.cdn
+      ? `<button class="sync-btn" id="syncbtn_${df.key}" onclick="syncFile('${df.key}')">↓ Sync</button>`
+      : `<span style="font-size:11px;color:var(--text-dim)">manual only</span>`;
     return `<div class="settings-row">
-      <div><div class="settings-label">${df.label}</div><div class="settings-meta">${df.desc} · <code style="font-size:10px;color:var(--text-dim)">${df.file}</code></div></div>
+      <div><div class="settings-label">${df.label}</div><div class="settings-meta">${df.desc} · <code style="font-size:10px;color:var(--text-dim)">${filePath}</code></div></div>
       <span class="settings-status ${statusClass}" id="status_${df.key}">${statusText}</span>
-      <button class="sync-btn" id="syncbtn_${df.key}" onclick="syncFile('${df.key}')">↓ Sync</button>
+      ${syncBtn}
     </div>`;
   }).join('');
 
   document.getElementById('appContent').innerHTML = `<div class="full-panel"><div class="settings-section">
+    <div class="settings-title">📂 Watch Folder</div>
+    <div class="settings-row" style="margin-top:8px">
+      <div>
+        ${folderHandle
+          ? `<div class="settings-label">📁 ${folderHandle.name}</div>
+             <div class="settings-meta" id="settingsFolderMeta">Auto-refreshing every ${POLL_INTERVAL/1000}s</div>`
+          : `<div class="settings-meta">Select the Reports folder to enable automatic character file loading.</div>`
+        }
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${folderHandle ? `<button class="sync-btn" onclick="manualRefresh()">↺ Refresh</button>` : ''}
+        <button class="sync-btn" onclick="pickFolder()">${folderHandle ? '📂 Change Folder' : '📂 Select Folder'}</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">Game Data Files</div>
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.7">
-      These JSON files provide item stack sizes, recipe data, and item usage. 
-      Place them in your watched folder alongside the character JSON files, or sync directly from the Project: Gorgon CDN below.<br>
-      CDN base: <code style="font-size:10px">${CDN_BASE}</code>
+      Loaded from <code style="font-size:10px">Originals/</code> subfolder in your watched folder.
+      Use <strong>Sync</strong> to download the latest version directly from the Project: Gorgon CDN and save it to disk.
     </div>
     ${rowsHtml}
     <div style="margin-top:14px">
-      <button class="sync-btn" onclick="syncAllFiles()">↓ Sync All Files</button>
+      <button class="sync-btn" onclick="syncAllFiles()">↓ Sync All from CDN</button>
     </div>
   </div>
 
@@ -4381,6 +4854,9 @@ function renderSettingsTab() {
                ${currentLogChar ? ` · Player: <strong style="color:var(--text)">${currentLogChar}</strong>` : ''}
                ${playerLogLastUpdate ? ` · Updated ${Math.round((Date.now()-playerLogLastUpdate)/60000)}m ago` : ''}
              </div>`
+          : playerLogPendingHandle
+          ? `<div class="settings-label" style="color:var(--gold-dim)">⚠ player.log (click to resume)</div>
+             <div class="settings-meta">${playerLogPendingHandle.name} · Permission needed after page reload</div>`
           : `<div class="settings-label" style="color:var(--text-dim)">○ Not watching</div>
              <div class="settings-meta">Select player.log to begin live tracking</div>`
         }
@@ -4388,6 +4864,8 @@ function renderSettingsTab() {
       <div style="display:flex;gap:6px">
         ${playerLogWatchActive
           ? `<button class="sync-btn" onclick="stopPlayerLogWatch()">■ Stop</button>`
+          : playerLogPendingHandle
+          ? `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="resumePlayerLog()">▶ Resume</button>`
           : `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="watchPlayerLog()">📂 Watch player.log</button>`
         }
       </div>
@@ -4406,46 +4884,9 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div class="settings-title">🔐 Safecracking</div>
-    <div class="settings-meta" style="margin-bottom:8px">Solver for the in-game vault puzzle. Uses the same Survey Helper backend (ws://localhost:8765).</div>
-  </div>
-
-  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div class="settings-title">Survey Helper</div>
-    <div class="settings-row" style="margin-top:8px">
-      <div>
-        <div class="settings-label">Show Survey tab</div>
-        <div class="settings-meta">Enables the Survey tab for the in-game Surveying skill (connects to ws://localhost:8765)</div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" ${showSurveyTab?'checked':''} onchange="setSurveyTabVisible(this.checked, true)" style="width:16px;height:16px;cursor:pointer">
-      </label>
-    </div>
-    <div class="settings-row" style="margin-top:12px;align-items:flex-start">
-      <div style="flex:1">
-        <div class="settings-label">Chat logs folder</div>
-        <div class="settings-meta">Folder containing Chat-*.log files. Restart setup after changing.</div>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;margin-left:16px">
-        <input type="text" id="settingsChatLogDir"
-          value="${surveyConfig.chat_log_dir || ''}"
-          placeholder="C:\\...\\ChatLogs"
-          style="width:280px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:12px;font-family:monospace">
-        <button class="ctx-btn" onclick="const v=document.getElementById('settingsChatLogDir').value.trim();if(v){surveySend({type:'cmd_update_config',chat_log_dir:v});showToast('Chat log folder saved');}">Apply</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">Version</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap">
       <span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:3px 9px;color:var(--gold)">App v${APP_VERSION}</span>
-      ${DATA_FILES.map(df => dataVersions[df.key]
-        ? `<span style="font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;color:var(--text-dim)" title="${df.file}">${df.label.replace(' Database','').replace(' Sources','').replace(' Database','')} v${dataVersions[df.key]}</span>`
-        : ''
-      ).filter(Boolean).join('')}
-    </div>
-    <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
       <button class="ctx-btn" onclick="checkForUpdate()" id="updateCheckBtn">Check for updates</button>
       <span id="updateStatus" style="font-size:12px;color:var(--text-dim)"></span>
     </div>
@@ -4468,14 +4909,26 @@ async function syncFile(key) {
   if (statusEl) { statusEl.className='settings-status loading'; statusEl.textContent='⟳ Syncing…'; }
   if (btnEl) btnEl.disabled = true;
   try {
-    const res = await fetch(CDN_BASE + df.cdn);
+    const ver = await getCDNVersion();
+    const res = await fetch(`${CDN_ROOT}${ver}/data/${df.cdn}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const raw = await res.json();
-    // Process into our minimal format
-    const processed = processCDNData(key, raw);
-    applyGameData(key, processed);
-    // Save to folder if we have write access (we don't — read only), just keep in memory
-    showToast(`✓ ${df.label} synced`);
+    applyGameData(key, processCDNData(key, raw));
+    // Save raw file to Originals/ folder so it persists across page reloads
+    if (folderHandle) {
+      try {
+        const originalsDir = await folderHandle.getDirectoryHandle('Originals', { create: true });
+        const fh = await originalsDir.getFileHandle(df.file, { create: true });
+        const writable = await fh.createWritable();
+        await writable.write(JSON.stringify(raw));
+        await writable.close();
+        showToast(`✓ ${df.label} synced & saved`);
+      } catch(e2) {
+        showToast(`✓ ${df.label} synced (couldn't save: ${e2.message})`);
+      }
+    } else {
+      showToast(`✓ ${df.label} synced (select a folder to save permanently)`);
+    }
   } catch(e) {
     showToast(`✗ Sync failed: ${e.message}`);
     if (statusEl) { statusEl.className='settings-status missing'; statusEl.textContent='✗ Sync failed'; }
@@ -4484,7 +4937,7 @@ async function syncFile(key) {
   renderSettingsTab();
 }
 
-async function syncAllFiles() { for (const df of DATA_FILES) await syncFile(df.key); }
+async function syncAllFiles() { for (const df of DATA_FILES) { if (df.cdn) await syncFile(df.key); } }
 
 function processCDNData(key, raw) {
   if (key === 'items') {
@@ -4565,6 +5018,21 @@ function processCDNData(key, raw) {
     const out = {};
     for (const [k,v] of Object.entries(raw)) {
       out[k] = { name:v.NpcFriendlyName||k, area:v.Area||'', numSlots:v.NumSlots??null, levels:v.Levels||null, grouping:v.Grouping||null, reqDesc:v.RequirementDescription||null };
+    }
+    return out;
+  }
+  if (key === 'landmarks') {
+    const out = {};
+    for (const [area, entries] of Object.entries(raw)) {
+      out[area] = (entries||[]).map(e => {
+        const obj = { name: e.Name||'', type: e.Type||'', desc: e.Desc||'' };
+        if (e.Loc) {
+          const mx = e.Loc.match(/x:([-\d.]+)/), mz = e.Loc.match(/z:([-\d.]+)/);
+          if (mx) obj.x = Math.round(parseFloat(mx[1]) * 100) / 100;
+          if (mz) obj.z = Math.round(parseFloat(mz[1]) * 100) / 100;
+        }
+        return obj;
+      });
     }
     return out;
   }
@@ -4706,7 +5174,7 @@ function renderMapsTab() {
       </div>
 
       <div style="width:240px;flex-shrink:0">
-        <div class="map-npc-panel">${detailHtml}</div>
+        <div class="map-npc-panel" id="map-npc-panel">${detailHtml}</div>
       </div>
 
     </div>
@@ -4719,10 +5187,37 @@ function renderMapNpcDetail(npcKey, char) {
   if (!npc) return '';
 
   const favorLevel = char?.charData?.NPCs?.[npcKey]?.FavorLevel || '';
-  const fc = FAVOR_COLORS[favorLevel];
+
+  // Player log data for this NPC
+  const logCharName = char?.charData?.Character || currentLogChar;
+  const logNpc = playerLogData[logCharName]?.npcs?.[npcKey];
+  const exactFavor = logNpc?.exactFavor;
+
+  // Favor: use detailed bar when we have a level, else fallback
   const favorHtml = favorLevel
-    ? `<span class="favor-level-badge" style="color:${fc?.text||'var(--text-dim)'};background:${fc?.bg||'transparent'};border-color:${fc?.border||'var(--border)'}">${favorLevel}</span>`
+    ? renderFavorCell(favorLevel, exactFavor)
     : `<span style="font-size:12px;color:var(--text-dim)">No character loaded</span>`;
+
+  // Vendor gold section
+  let vendorHtml = '';
+  if (logNpc?.currentGold != null) {
+    const pct = logNpc.maxGold > 0 ? Math.round(logNpc.currentGold / logNpc.maxGold * 100) : 0;
+    const goldColor = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
+    const resetStr = formatGoldReset(logNpc.resetAt);
+    const loggedAgo = Math.round((Date.now() - logNpc.loggedAt) / 60000);
+    const agoStr = loggedAgo < 60 ? `${loggedAgo}m ago` : `${Math.round(loggedAgo/60)}h ago`;
+    vendorHtml = `
+      <div style="padding-top:8px;margin-top:8px;border-top:1px solid var(--border)">
+        <div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Vendor Gold <span style="color:var(--text-dim);font-size:9px;font-family:inherit">(seen ${agoStr})</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div style="flex:1;background:var(--bg3);border-radius:3px;height:7px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${goldColor};border-radius:3px;transition:width .3s"></div>
+          </div>
+          <span style="font-size:12px;color:var(--gold-light);font-family:'Cinzel',serif;white-space:nowrap">🪙 ${logNpc.currentGold.toLocaleString()} / ${logNpc.maxGold.toLocaleString()}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim)">Resets: <span style="color:var(--text)">${resetStr}</span></div>
+      </div>`;
+  }
 
   // Active quests returnable to this NPC
   const returnableQuests = char ? (char.charData.ActiveQuests || [])
@@ -4743,9 +5238,10 @@ function renderMapNpcDetail(npcKey, char) {
     ${npc.desc ? `<div style="font-size:11px;color:var(--text);font-style:italic;margin-bottom:8px">${npc.desc}</div>` : ''}
 
     <div style="margin-bottom:10px">${favorHtml}</div>
+    ${vendorHtml}
 
     ${returnableQuests.length ? `
-      <div class="map-panel-section">Returnable Quests</div>
+      <div class="map-panel-section" style="margin-top:10px">Returnable Quests</div>
       <div>${returnableQuests.map(q => `<div class="map-quest-item" onclick="navigateToQuest('${q.name.replace(/'/g,"\\'")}')">${q.name}</div>`).join('')}</div>` : ''}
 
     ${serviceTypes.length ? `
@@ -4876,34 +5372,402 @@ function showToast(msg) {
 const SURVEY_WS_URL = 'ws://localhost:8765';
 
 // ── Safecracking state ──
-let scState = null;        // last sc_state payload from server
-let scGuessInputs = ['','','',''];  // pending guess symbol selections (1-based)
+let scState = null;
+let scGuessInputs = ['','','',''];
+let scSolver = null; // local JS solver (no server needed)
+
+// ── Local Mastermind solver ──────────────────────────────────
+function scSolverInit(n) {
+  const all = [];
+  for (let a = 1; a <= n; a++)
+    for (let b = 1; b <= n; b++)
+      for (let c = 1; c <= n; c++)
+        for (let d = 1; d <= n; d++)
+          all.push([a,b,c,d]);
+  scSolver = { symbolCount: n, history: [], candidates: all, guess_count: 0 };
+  scSolverBuildState();
+}
+
+function scSolverScore(guess, secret) {
+  let exact = 0;
+  const gl = [], sl = [];
+  for (let i = 0; i < 4; i++) {
+    if (guess[i] === secret[i]) exact++;
+    else { gl.push(guess[i]); sl.push(secret[i]); }
+  }
+  let misplaced = 0;
+  const used = new Uint8Array(sl.length);
+  for (const g of gl) for (let j = 0; j < sl.length; j++) if (!used[j] && sl[j] === g) { misplaced++; used[j] = 1; break; }
+  return { exact, misplaced };
+}
+
+function scSolverBuildState() {
+  const s = scSolver;
+  const n = s.candidates.length;
+  scState = { solver: {
+    history:     s.history,
+    suggestion:  n > 0 ? s.candidates[0] : null,
+    solved:      n === 1,
+    impossible:  n === 0,
+    candidates:  n,
+    guess_count: s.guess_count,
+    symbols:     Array.from({ length: s.symbolCount }, (_, i) => i + 1)
+  }};
+}
+
+function scSolverRecord(guess, exact, misplaced) {
+  const s = scSolver;
+  s.history.push({ guess: [...guess], exact, misplaced });
+  s.guess_count++;
+  s.candidates = s.candidates.filter(c => {
+    const r = scSolverScore(guess, c);
+    return r.exact === exact && r.misplaced === misplaced;
+  });
+  scSolverBuildState();
+}
+
+function scSolverUndo() {
+  if (!scSolver?.history.length) return;
+  const prevHistory = scSolver.history.slice(0, -1); // all but last entry
+  const n = scSolver.symbolCount;
+  scSolverInit(n); // fresh candidates
+  for (const h of prevHistory) scSolverRecord(h.guess, h.exact, h.misplaced);
+}
+
+// ── Gardening helpers ─────────────────────────────────────────
+function startGardenSession() {
+  gardenSessionActive = true;
+  localStorage.setItem('gardenSessionActive', '1');
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function stopGardenSession() {
+  gardenSessionActive = false;
+  localStorage.removeItem('gardenSessionActive');
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function markPlotHarvested(charName, plotId) {
+  if (!gardenData[charName]?.plots?.[plotId]) return;
+  gardenData[charName].plots[plotId].stage = 'harvested';
+  gardenData[charName].plots[plotId].updatedAt = Date.now();
+  savePlayerLogData();
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function clearHarvestedPlots(charName) {
+  if (!gardenData[charName]) return;
+  for (const id of Object.keys(gardenData[charName].plots)) {
+    if (gardenData[charName].plots[id].stage === 'harvested') delete gardenData[charName].plots[id];
+  }
+  savePlayerLogData();
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function markAllHarvested(charName) {
+  if (!gardenData[charName]) return;
+  for (const plot of Object.values(gardenData[charName].plots)) {
+    if (plot.stage !== 'harvested') { plot.stage = 'harvested'; plot.updatedAt = Date.now(); }
+  }
+  savePlayerLogData();
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function clearAllGardenData(charName) {
+  if (charName) delete gardenData[charName];
+  else gardenData = {};
+  savePlayerLogData();
+  if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+}
+
+function renderGardeningTab(targetEl) {
+  const el = targetEl || document.getElementById('appContent');
+  if (!el) return;
+
+  const GARDEN_CROP_ICONS = {
+    'Potato': 5022, 'Onion': 5024, 'Cabbage': 5103, 'Beet': 5101,
+    'Squash': 5105, 'Broccoli': 5135, 'Carrot': 5134, 'Pumpkin': 5404,
+    'Tomato': 5458, 'Barley': 5717, 'OrcishWheat': 5719, 'Orcish Wheat': 5719,
+    'Cotton': 5360, 'Cotton Plant': 5360, 'Marigold': 5285,
+  };
+
+  // Growth times in seconds (from wiki)
+  const GARDEN_GROWTH_SECS = {
+    'Potato': 50, 'Onion': 50, 'Cabbage': 55, 'Beet': 65,
+    'Squash': 170, 'Broccoli': 175, 'Carrot': 175,
+    'Green Pepper': 245, 'Red Pepper': 274, 'Corn': 285,
+    'Escarole': 295, 'Basil': 304, 'Cantaloupe': 311, 'Pea': 310, 'Soybean': 310,
+    'Bluebell': 70, 'Red Aster': 90, 'Violet': 110, 'Dahlia': 120,
+    'Daisy': 130, 'Pansy': 140, 'Marigold': 150, 'Poppy': 160,
+    'Red Rose': 170, 'Elven Lily': 180, 'Winterhue': 190,
+    'Desert Rose': 199, 'Dandelion': 207, 'Fae Mysotis': 218,
+    'Tulip': 228, 'Paleblood': 235,
+    'Horse Apple': 59, 'Cotton': 150, 'Cotton Plant': 150, 'Evil Pumpkin': 75,
+    'Sugarcane': 128, 'Barley': 150, 'Pumpkin': 170,
+    'Flax': 282, 'Oat': 250, 'Tundra Rye': 250,
+  };
+
+  const SLOT_EMOJI = { Flowers:'🌸', Cotton:'🌿', Grass:'🌾' };
+
+  // Format seconds into "1m 30s" style
+  function fmtDur(secs) {
+    if (secs <= 0) return '0s';
+    const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+    return m > 0 ? (s > 0 ? `${m}m ${s}s` : `${m}m`) : `${s}s`;
+  }
+
+  const STAGE = {
+    planted:          { icon: '🌱', label: 'Just Planted',        color: '#7ec87e' },
+    growing:          { icon: '🌿', label: 'Growing',             color: '#4caf50' },
+    thirsty:          { icon: '💧', label: 'Thirsty',             color: '#5b9bd5' },
+    needs_fertilizer: { icon: '🧪', label: 'Needs Fertilizer',    color: '#e6a817' },
+    ripe:             { icon: '🌾', label: 'Ready to Harvest',    color: '#f0c040' },
+    harvested:        { icon: '✅', label: 'Harvested',           color: '#666'    },
+  };
+  const STAGE_ORDER = { ripe: 0, thirsty: 1, needs_fertilizer: 2, growing: 3, planted: 4, harvested: 5 };
+
+  const sessionBtn = gardenSessionActive
+    ? `<button onclick="stopGardenSession()" style="background:#e0706020;border:1px solid #e07060;color:#e07060;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">■ Stop</button>`
+    : `<button onclick="startGardenSession()" style="background:#4caf5020;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">▶ Start</button>`;
+
+  const chars = Object.keys(gardenData).filter(c => Object.keys(gardenData[c]?.plots || {}).length > 0);
+
+  if (!gardenSessionActive && chars.length === 0) {
+    el.innerHTML = `<div style="padding:32px 24px;text-align:center;color:var(--text-dim)">
+      <div style="font-size:36px;margin-bottom:12px">🌱</div>
+      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--text);margin-bottom:12px">Gardening Tracker</div>
+      <div style="font-size:13px;max-width:320px;margin:0 auto 20px;line-height:1.5">
+        Press Start before planting seeds to begin tracking your garden plots.
+      </div>
+      <button onclick="startGardenSession()" style="background:#4caf5020;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:6px 24px;font-size:13px;cursor:pointer;font-family:'Cinzel',serif">▶ Start</button>
+    </div>`;
+    return;
+  }
+
+  // Top bar: session status + button
+  const statusDot = gardenSessionActive
+    ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#4caf50;margin-right:5px;box-shadow:0 0 5px #4caf5088"></span><span style="color:#4caf50;font-size:11px">Monitoring</span>`
+    : `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#666;margin-right:5px"></span><span style="color:var(--text-dim);font-size:11px">Stopped</span>`;
+  let html = `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">${statusDot}<span style="flex:1"></span>${sessionBtn}</div>`;
+
+  if (chars.length === 0) {
+    html += `<div style="padding:24px;text-align:center;color:var(--text-dim);font-size:13px">No plots detected yet. Plant seeds in-game to see them here.</div>`;
+    el.innerHTML = html;
+    return;
+  }
+
+  for (const charName of chars) {
+    const plots = gardenData[charName].plots;
+    const sorted = Object.entries(plots).sort((a, b) => {
+      const ap = STAGE_ORDER[a[1].stage] ?? 9, bp = STAGE_ORDER[b[1].stage] ?? 9;
+      return ap !== bp ? ap - bp : (b[1].firstSeenAt || 0) - (a[1].firstSeenAt || 0);
+    });
+    const activePlots = sorted.filter(([, p]) => p.stage !== 'harvested');
+    const harvestedPlots = sorted.filter(([, p]) => p.stage === 'harvested');
+    const ripeCnt = activePlots.filter(([, p]) => p.stage === 'ripe').length;
+    const needsCnt = activePlots.filter(([, p]) => p.stage === 'thirsty' || p.stage === 'needs_fertilizer').length;
+
+    const safeCharHeader = charName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    html += `<div style="margin-bottom:4px">
+      <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold);padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>${charName}</span>
+        <span style="font-size:11px;color:var(--text-dim);font-family:sans-serif">${activePlots.length} active plot${activePlots.length !== 1 ? 's' : ''}</span>
+        ${ripeCnt > 0 ? `<span style="background:#f0c04020;color:#f0c040;border:1px solid #f0c04055;border-radius:10px;padding:1px 8px;font-size:11px;font-family:sans-serif">🌾 ${ripeCnt} ready</span>` : ''}
+        ${needsCnt > 0 ? `<span style="background:#5b9bd520;color:#5b9bd5;border:1px solid #5b9bd555;border-radius:10px;padding:1px 8px;font-size:11px;font-family:sans-serif">⚠ ${needsCnt} need attention</span>` : ''}
+        <span style="flex:1"></span>
+        ${ripeCnt > 0 ? `<button onclick="markAllHarvested('${safeCharHeader}')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:sans-serif" title="Mark all plots as harvested">✓ Harvest All</button>` : ''}
+        <button onclick="if(confirm('Clear all garden data for ${charName}?')) clearAllGardenData('${safeCharHeader}')" style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:sans-serif" title="Remove all plot data for this character">✕ Reset</button>
+      </div>`;
+
+    // ── Capacity section ─────────────────────────────────────
+    // Count active (non-harvested) plots per slot
+    const slotCounts = {};
+    for (const [, p] of sorted) {
+      if (p.stage === 'harvested' || !p.cropType) continue;
+      const si2 = GARDEN_SLOT_MAP[p.cropType];
+      if (!si2) continue;
+      if (!slotCounts[si2.slot]) slotCounts[si2.slot] = { count: 0, max: si2.max };
+      slotCounts[si2.slot].count++;
+    }
+    // Always show Flowers/Cotton/Grass regardless of count (so player sees capacity)
+    for (const [crop, info] of Object.entries(GARDEN_SLOT_MAP)) {
+      if (['Flowers','Cotton','Grass'].includes(info.slot) && !slotCounts[info.slot])
+        slotCounts[info.slot] = { count: 0, max: info.max };
+    }
+    const slotEntries = Object.entries(slotCounts).sort((a, b) => {
+      // Active (count > 0) before empty; within active: full before partial; then alphabetical
+      const aEmpty = a[1].count === 0 ? 1 : 0, bEmpty = b[1].count === 0 ? 1 : 0;
+      if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+      const af = a[1].count >= a[1].max ? 0 : 1, bf = b[1].count >= b[1].max ? 0 : 1;
+      return af !== bf ? af - bf : a[0].localeCompare(b[0]);
+    });
+    if (slotEntries.length) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:5px;padding:6px 12px 8px;border-bottom:1px solid var(--border);align-items:center">
+        <span style="font-size:10px;color:var(--text-dim);margin-right:2px">Slots:</span>`;
+      for (const [slotName, info] of slotEntries) {
+        const full = info.count >= info.max;
+        const dots = '●'.repeat(info.count) + '○'.repeat(Math.max(0, info.max - info.count));
+        const col = full ? '#e07060' : (info.count > 0 ? 'var(--text)' : 'var(--text-dim)');
+        const bg = full ? '#e0706018' : 'var(--bg3)';
+        const border = full ? '#e0706055' : 'var(--border)';
+        const emoji = SLOT_EMOJI[slotName] ? `${SLOT_EMOJI[slotName]} ` : '';
+        html += `<span style="font-size:11px;background:${bg};border:1px solid ${border};border-radius:10px;padding:2px 8px;color:${col};font-family:monospace;white-space:nowrap" title="${info.count}/${info.max} ${slotName}">${emoji}${slotName} ${dots}</span>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px;padding:10px 12px">`;
+
+    for (const [plotId, plot] of sorted) {
+      if (plot.stage === 'harvested') continue;
+      const si = STAGE[plot.stage] || STAGE.growing;
+      const isRipe = plot.stage === 'ripe';
+      const needsAttn = plot.stage === 'thirsty' || plot.stage === 'needs_fertilizer';
+      const borderCol = (isRipe || needsAttn) ? si.color : 'var(--border)';
+      const glowStyle = isRipe ? `box-shadow:0 0 10px ${si.color}33;` : '';
+      const safeChar = charName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      // Growth bar: use elapsed time from plantedAt if available, else fall back to model scale
+      const growthSecs = GARDEN_GROWTH_SECS[plot.cropType] || null;
+      const refTime = plot.plantedAt || null;
+      let scalePct = null, remainSecs = null;
+      if (isRipe) {
+        scalePct = 100;
+      } else if (growthSecs && refTime) {
+        const totalElapsedMs = Date.now() - refTime;
+        const activePauseMs = (plot.totalPausedMs || 0) + (plot.pausedAt ? Date.now() - plot.pausedAt : 0);
+        const growingMs = Math.max(0, totalElapsedMs - activePauseMs);
+        scalePct = Math.min(99, Math.max(1, Math.round(growingMs / (growthSecs * 1000) * 100)));
+        remainSecs = Math.max(0, growthSecs - growingMs / 1000);
+      } else if (plot.scale != null) {
+        scalePct = Math.min(100, Math.round(plot.scale * 100));
+      }
+      const scaleBarCol = isRipe ? si.color : (scalePct >= 80 ? '#f0c040' : 'var(--gold-dim)');
+
+      const cropIconId = GARDEN_CROP_ICONS[plot.cropType];
+      const cropIconUrl = cropIconId ? getIconUrl(cropIconId) : null;
+      const cropIconHtml = cropIconUrl
+        ? `<img src="${cropIconUrl}" style="width:24px;height:24px;image-rendering:pixelated;flex-shrink:0">`
+        : `<span style="font-size:20px;line-height:1;flex-shrink:0">${si.icon}</span>`;
+
+      html += `<div style="background:var(--bg2);border:1px solid ${borderCol};border-radius:6px;padding:10px;${glowStyle}position:relative">
+        <div style="display:flex;align-items:flex-start;gap:7px;margin-bottom:6px">
+          ${cropIconHtml}
+          <div style="min-width:0;flex:1">
+            <div style="font-family:'Cinzel',serif;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${plot.cropType || 'Unknown'}</div>
+            <div style="font-size:10px;color:${si.color};font-weight:600;margin-top:1px">${si.label}</div>
+          </div>
+        </div>
+        ${plot.description ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;line-height:1.35">${plot.description}</div>` : ''}
+        ${scalePct != null ? `<div style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:2px">
+            <span>Growth</span>
+            <span style="color:${scaleBarCol}">${isRipe ? '✓ Ready' : (remainSecs != null ? `~${fmtDur(remainSecs)}` : `${scalePct}%`)}</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:2px;height:4px;overflow:hidden"><div style="height:100%;width:${scalePct}%;background:${scaleBarCol};transition:width 0.3s"></div></div>
+        </div>` : ''}
+        <div style="font-size:10px;color:var(--text-dim)">First seen: <span style="color:var(--text)">${fmtAgo(plot.firstSeenAt)}</span></div>
+        ${plot.updatedAt && plot.updatedAt !== plot.firstSeenAt ? `<div style="font-size:10px;color:var(--text-dim)">Updated: <span style="color:var(--text)">${fmtAgo(plot.updatedAt)}</span></div>` : ''}
+        ${isRipe ? `<button onclick="markPlotHarvested('${safeChar}','${plotId}')" style="margin-top:8px;width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 0;font-size:11px;cursor:pointer" onmouseover="this.style.borderColor='${si.color}'" onmouseout="this.style.borderColor='var(--border)'">✓ Mark Harvested</button>` : ''}
+      </div>`;
+    }
+
+    html += `</div>`;
+
+    if (harvestedPlots.length > 0) {
+      html += `<div style="padding:2px 12px 8px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border)">
+        <span style="font-size:11px;color:var(--text-dim)">✅ ${harvestedPlots.length} harvested</span>
+        <button onclick="clearHarvestedPlots('${charName.replace(/'/g,"\\'")}')" style="background:none;border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px 8px;border-radius:4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">✕ Clear harvested</button>
+      </div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ── Tools tab ────────────────────────────────────────────────
+function pruneWitheredPlots() {
+  // Auto-remove plots that haven't received a game update in too long.
+  // Plants wither in the game after a few minutes without care; if our tracker
+  // hasn't seen any ProcessUpdateDescription for a plot within the threshold,
+  // assume the entity is gone (harvested / withered) and clean it up.
+  //   Unknown crop (cropType null)  →  2 minutes  (likely mis-detected, clear fast)
+  //   Known crop, any stage         →  5 minutes  (safety net for missed harvests)
+  //   Harvested plots               →  never pruned here (user clears manually)
+  const now = Date.now();
+  const KNOWN_TTL   = 5 * 60 * 1000; // 5 min
+  const UNKNOWN_TTL = 2 * 60 * 1000; // 2 min
+  let pruned = false;
+  for (const charData of Object.values(gardenData)) {
+    for (const [plotId, plot] of Object.entries(charData.plots || {})) {
+      if (plot.stage === 'harvested') continue;
+      const ttl = plot.cropType ? KNOWN_TTL : UNKNOWN_TTL;
+      const ref = plot.updatedAt || plot.firstSeenAt || 0;
+      if (now - ref > ttl) {
+        delete charData.plots[plotId];
+        pruned = true;
+      }
+    }
+  }
+  if (pruned) savePlayerLogData();
+}
+
+function startGardenRefresh() {
+  if (gardenRefreshTimer) return;
+  gardenRefreshTimer = setInterval(() => {
+    pruneWitheredPlots();
+    if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+  }, 20000); // re-render every 20 seconds so growth bars stay current
+}
+function stopGardenRefresh() {
+  if (gardenRefreshTimer) { clearInterval(gardenRefreshTimer); gardenRefreshTimer = null; }
+}
+
+function setToolsSubTab(tab) {
+  toolsSubTab = tab;
+  if (tab === 'survey') surveyConnect();
+  if (tab === 'gardening') { pruneWitheredPlots(); startGardenRefresh(); } else stopGardenRefresh();
+  renderToolsTab();
+}
+
+function renderToolsTab() {
+  const el = document.getElementById('appContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="char-tabs" style="margin-bottom:0">
+      <div class="char-tab ${toolsSubTab==='safecracking'?'active':''}" onclick="setToolsSubTab('safecracking')">Safecracking</div>
+      <div class="char-tab ${toolsSubTab==='survey'?'active':''}" onclick="setToolsSubTab('survey')">Survey</div>
+      <div class="char-tab ${toolsSubTab==='gardening'?'active':''}" onclick="setToolsSubTab('gardening')">🌱 Gardening</div>
+    </div>
+    <div id="toolsContent"></div>`;
+  const content = document.getElementById('toolsContent');
+  if (toolsSubTab === 'safecracking') renderSafecrackingTab(content);
+  else if (toolsSubTab === 'gardening') renderGardeningTab(content);
+  else renderSurveyTab(content);
+}
 
 function setSurveyTabVisible(visible, saveToStorage = true) {
   showSurveyTab = visible;
-  const el = document.getElementById('nav-survey');
-  if (el) el.style.display = visible ? '' : 'none';
-  const elSC = document.getElementById('nav-safecracking');
-  if (elSC) elSC.style.display = visible ? '' : 'none';
   if (saveToStorage) localStorage.setItem('showSurveyTab', visible ? '1' : '0');
   if (visible) surveyConnect();
   if (mainTab === 'settings') renderSettingsTab();
 }
 
 function surveyConnect() {
-  if (!showSurveyTab) return;
   if (surveyWs && surveyWs.readyState <= 1) return; // already open or connecting
   try {
     surveyWs = new WebSocket(SURVEY_WS_URL);
     surveyWs.onopen = () => {
       surveyConnected = true;
-      if (mainTab === 'survey') renderSurveyTab();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
     };
     surveyWs.onclose = () => {
       surveyConnected = false;
       surveyWs = null;
-      if (mainTab === 'survey') renderSurveyTab();
-      if (showSurveyTab && !surveyShuttingDown) setTimeout(surveyConnect, 3000);
+      if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
+      if ((showSurveyTab || (mainTab === 'tools' && toolsSubTab === 'survey')) && !surveyShuttingDown)
+        setTimeout(surveyConnect, 3000);
       surveyShuttingDown = false;
     };
     surveyWs.onerror = () => {};
@@ -4976,28 +5840,28 @@ function surveyHandleMessage(msg) {
       if (msg.player_east != null) surveyConfig.player_east = msg.player_east;
       if (msg.player_south != null) surveyConfig.player_south = msg.player_south;
       surveyCirclePins = [];
-      if (mainTab === 'survey') renderSurveyTab();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
       break;
     case 'survey_detected':
       surveyLocations.push(msg.location);
       surveyStatus = msg.status || '';
-      if (mainTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
+      if (mainTab === 'tools' && toolsSubTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
       break;
     case 'survey_duplicate':
       surveyStatus = msg.status || '';
-      if (mainTab === 'survey') surveyUpdateStatus();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyUpdateStatus();
       break;
     case 'survey_completed':
     case 'survey_unmarked':
       surveyLocations = msg.locations || surveyLocations;
       surveySlotLabels = msg.slot_labels || surveySlotLabels;
       surveyStatus = msg.status || '';
-      if (mainTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
+      if (mainTab === 'tools' && toolsSubTab === 'survey') { surveyRenderList(); surveyDrawCanvas(); surveyUpdateStatus(); }
       break;
     case 'area_changed':
       surveyActiveArea = msg.area;
       surveyStatus = msg.status || '';
-      if (mainTab === 'survey') surveyUpdateStatus();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyUpdateStatus();
       break;
     case 'setup_stopped':
       // Sent by server whenever Stop Setup is pressed, even with 0 locations.
@@ -5005,7 +5869,7 @@ function surveyHandleMessage(msg) {
       surveyLocations = msg.locations || [];
       surveySetupActive = false;
       surveySetupComplete = true;
-      if (mainTab === 'survey') renderSurveyTab();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
       break;
     case 'route_calculated':
       surveyLocations = msg.locations || [];
@@ -5014,26 +5878,24 @@ function surveyHandleMessage(msg) {
       surveySetupActive = false;
       surveySetupComplete = true;
       surveyStatus = msg.status || '';
-      if (mainTab === 'survey') renderSurveyTab();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
       break;
     case 'player_pos':
       if (msg.east != null) surveyPlayerMeters = {east: msg.east, south: msg.south};
-      if (mainTab === 'survey') surveyDrawCanvas();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyDrawCanvas();
       break;
     case 'circle_pin_added':
       surveyCirclePins.push({px: msg.pixel_x, py: msg.pixel_y});
-      if (mainTab === 'survey') surveyDrawCanvas();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyDrawCanvas();
       break;
     case 'sc_state':
-      scState = msg;
-      if (mainTab === 'safecracking') renderSafecrackingTab();
+      // sc_state from server ignored — local JS solver manages state
       break;
     case 'status':
     case 'error':
     case 'pong':
       if (msg.message) surveyStatus = msg.message;
-      if (mainTab === 'survey') surveyUpdateStatus();
-      if (mainTab === 'safecracking' && msg.type === 'error') renderSafecrackingTab();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyUpdateStatus();
       break;
   }
 }
@@ -5045,7 +5907,26 @@ function surveyUpdateStatus() {
 
 // ── Safecracking tab render ────────────────────────────────
 
-function scSend(obj) { surveySend(obj); }
+function scSend(obj) {
+  const rerender = () => {
+    const tgt = mainTab === 'tools' ? document.getElementById('toolsContent') : null;
+    renderSafecrackingTab(tgt);
+  };
+  switch (obj.type) {
+    case 'sc_reset':
+      scSolverInit(obj.symbol_count || scSolver?.symbolCount || 12);
+      scGuessInputs = ['','','',''];
+      rerender(); break;
+    case 'sc_record':
+      scSolverRecord(obj.guess, obj.exact, obj.misplaced);
+      rerender(); break;
+    case 'sc_undo':
+      scSolverUndo();
+      rerender(); break;
+    default:
+      surveySend(obj); // survey commands still go via WS
+  }
+}
 
 function scSelectSymbol(slot, idx) {
   scGuessInputs[slot] = idx;
@@ -5105,27 +5986,13 @@ function scApplySuggestion() {
   document.getElementById('scGuessSection')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function renderSafecrackingTab() {
-  const el = document.getElementById('appContent');
+function renderSafecrackingTab(targetEl) {
+  const el = targetEl || document.getElementById('appContent');
   if (!el) return;
 
-  // Not connected
-  if (!surveyConnected) {
-    el.innerHTML = `
-<div style="max-width:640px;margin:60px auto;padding:0 20px;text-align:center">
-  <div style="font-size:48px;margin-bottom:16px;opacity:.4">🔐</div>
-  <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--gold);margin-bottom:12px">Survey Helper Not Running</div>
-  <div style="color:var(--text-dim);font-size:13px;line-height:1.7;margin-bottom:24px">
-    The Safecracking solver uses the same Survey Helper backend.<br>
-    Start it from the <strong style="color:var(--text)">Survey</strong> tab, or click below.
-  </div>
-  <button class="sync-btn" onclick="surveyLaunch()" style="font-size:14px;padding:10px 28px;background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">
-    ▶ Start Survey Helper
-  </button>
-  <div style="font-size:11px;color:var(--text-dim);margin-top:16px">Connecting to ws://localhost:8765 — retrying every 3 s</div>
-</div>`;
-    return;
-  }
+  // Init local solver on first use
+  if (!scSolver) scSolverInit(12);
+  if (!scState) scSolverBuildState();
 
   const sc = scState;
   const solver = sc?.solver;
@@ -5238,8 +6105,8 @@ function renderSafecrackingTab() {
 
 // ── Survey tab render ──────────────────────────────────────
 
-function renderSurveyTab() {
-  const el = document.getElementById('appContent');
+function renderSurveyTab(targetEl) {
+  const el = targetEl || document.getElementById('appContent');
   if (!el) return;
 
   if (!surveyConnected) {
