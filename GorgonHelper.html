@@ -4802,6 +4802,48 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+    <div class="settings-title">📋 Player Log</div>
+    <div class="settings-meta" style="margin-bottom:10px">Actively watch <code style="color:var(--gold)">player.log</code> to track NPC vendor gold, reset times, and favor in real time. Polls every 2 seconds for new lines.</div>
+
+    <!-- Watch status row -->
+    <div class="settings-row" style="margin-bottom:8px">
+      <div>
+        ${playerLogWatchActive
+          ? `<div class="settings-label" style="color:#7ab880">● Watching player.log</div>
+             <div class="settings-meta">${playerLogFileHandle ? playerLogFileHandle.name : ''}
+               ${currentLogChar ? ` · Player: <strong style="color:var(--text)">${currentLogChar}</strong>` : ''}
+               ${playerLogLastUpdate ? ` · Updated ${Math.round((Date.now()-playerLogLastUpdate)/60000)}m ago` : ''}
+             </div>`
+          : playerLogPendingHandle
+          ? `<div class="settings-label" style="color:var(--gold-dim)">⚠ player.log (click to resume)</div>
+             <div class="settings-meta">${playerLogPendingHandle.name} · Permission needed after page reload</div>`
+          : `<div class="settings-label" style="color:var(--text-dim)">○ Not watching</div>
+             <div class="settings-meta">Select player.log to begin live tracking</div>`
+        }
+      </div>
+      <div style="display:flex;gap:6px">
+        ${playerLogWatchActive
+          ? `<button class="sync-btn" onclick="stopPlayerLogWatch()">■ Stop</button>`
+          : playerLogPendingHandle
+          ? `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="resumePlayerLog()">▶ Resume</button>`
+          : `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="watchPlayerLog()">📂 Watch player.log</button>`
+        }
+      </div>
+    </div>
+
+    <!-- Data summary -->
+    ${(() => {
+      const totalNpcs = Object.values(playerLogData).reduce((s,d) => s + Object.keys(d.npcs).length, 0);
+      const charCount = Object.keys(playerLogData).length;
+      if (totalNpcs === 0) return '';
+      return `<div class="settings-row" style="margin-top:4px">
+        <div class="settings-meta">${totalNpcs} NPC vendor entries across ${charCount} character${charCount!==1?'s':''}</div>
+        <button class="sync-btn danger" onclick="clearPlayerLogData()">✕ Clear all data</button>
+      </div>`;
+    })()}
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">Game Data Files</div>
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.7">
       Loaded from <code style="font-size:10px">Json/</code> subfolder in your watched folder.
@@ -4842,48 +4884,6 @@ function renderSettingsTab() {
           <button class="ctx-btn danger" onclick="clearWOLimit('${k}')">Clear</button>
         </div>`).join('')
     }
-  </div>
-
-  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div class="settings-title">📋 Player Log</div>
-    <div class="settings-meta" style="margin-bottom:10px">Actively watch <code style="color:var(--gold)">player.log</code> to track NPC vendor gold, reset times, and favor in real time. Polls every 2 seconds for new lines.</div>
-
-    <!-- Watch status row -->
-    <div class="settings-row" style="margin-bottom:8px">
-      <div>
-        ${playerLogWatchActive
-          ? `<div class="settings-label" style="color:#7ab880">● Watching player.log</div>
-             <div class="settings-meta">${playerLogFileHandle ? playerLogFileHandle.name : ''}
-               ${currentLogChar ? ` · Player: <strong style="color:var(--text)">${currentLogChar}</strong>` : ''}
-               ${playerLogLastUpdate ? ` · Updated ${Math.round((Date.now()-playerLogLastUpdate)/60000)}m ago` : ''}
-             </div>`
-          : playerLogPendingHandle
-          ? `<div class="settings-label" style="color:var(--gold-dim)">⚠ player.log (click to resume)</div>
-             <div class="settings-meta">${playerLogPendingHandle.name} · Permission needed after page reload</div>`
-          : `<div class="settings-label" style="color:var(--text-dim)">○ Not watching</div>
-             <div class="settings-meta">Select player.log to begin live tracking</div>`
-        }
-      </div>
-      <div style="display:flex;gap:6px">
-        ${playerLogWatchActive
-          ? `<button class="sync-btn" onclick="stopPlayerLogWatch()">■ Stop</button>`
-          : playerLogPendingHandle
-          ? `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="resumePlayerLog()">▶ Resume</button>`
-          : `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="watchPlayerLog()">📂 Watch player.log</button>`
-        }
-      </div>
-    </div>
-
-    <!-- Data summary -->
-    ${(() => {
-      const totalNpcs = Object.values(playerLogData).reduce((s,d) => s + Object.keys(d.npcs).length, 0);
-      const charCount = Object.keys(playerLogData).length;
-      if (totalNpcs === 0) return '';
-      return `<div class="settings-row" style="margin-top:4px">
-        <div class="settings-meta">${totalNpcs} NPC vendor entries across ${charCount} character${charCount!==1?'s':''}</div>
-        <button class="sync-btn danger" onclick="clearPlayerLogData()">✕ Clear all data</button>
-      </div>`;
-    })()}
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
