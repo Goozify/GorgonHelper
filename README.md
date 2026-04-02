@@ -98,6 +98,18 @@ Both files are written to your `Reports` folder and picked up automatically as l
 
 ---
 
+## Survey tool tips
+
+The Survey tool (Tools → Survey) uses screen capture to track survey map locations and guide you through optimal routes.
+
+For best results:
+
+- **Inventory** — move the survey maps into an empty inventory bag before starting. Other items in the same bag can confuse slot detection.
+- **In-game map** — open **Filters** and hide all other markers so only the survey pins are visible. Make sure the map is fully visible within the game window.
+- **Map player indicator** — in **Settings → GUI → Other Window Settings**, set **Map Player Indicator Style** to **Square**. This gives the most reliable player position recognition.
+
+---
+
 ## Updating
 
 The tool can update itself. In **Settings** → **Version** → click **Check for updates**.
