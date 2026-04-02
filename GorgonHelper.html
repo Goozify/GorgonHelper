@@ -518,6 +518,7 @@ const APP_VERSION = '0.1.8';
 
 let ITEMS = {};           // id -> [name, maxStack, iconId, value, keywords[]]
 let RECIPES = {};         // internalName -> [name, skill, [[ingId,qty]...], [[resId,qty]...]]
+let RECIPE_RID_MAP = {};  // numeric rid -> internalName (built from CDN recipes.json)
 let ITEMUSES = {};        // id -> [recipeInternalName, ...]
 let SOURCES_RECIPES = {}; // internalName -> [{t, npc?, npcName?, area?, skill?, item?}]
 let NPC_TRAINING = {};   // npcKey -> [{name, favor, cost, skillLevel, recipeKey}]
@@ -4960,9 +4961,12 @@ function processCDNData(key, raw) {
   }
   if (key === 'recipes') {
     const out = {};
-    for (const [,v] of Object.entries(raw)) {
+    RECIPE_RID_MAP = {};
+    for (const [k,v] of Object.entries(raw)) {
       const internal = v.InternalName||'';
       if (!internal) continue;
+      const rid = parseInt(k.split('_')[1]);
+      if (rid) RECIPE_RID_MAP[rid] = internal;
       const ings = (v.Ingredients||[]).filter(i=>i.ItemCode).map(i=>[i.ItemCode,i.StackSize]);
       const results = (v.ResultItems||[]).filter(r=>r.ItemCode).map(r=>[r.ItemCode,r.StackSize]);
       const cookKwRaw = (v.Keywords||[]).find(k=>['MealRecipe','SnackRecipe','InstantSnackRecipe'].includes(k)) || '';
@@ -4976,28 +4980,16 @@ function processCDNData(key, raw) {
     for (const [k,v] of Object.entries(raw)) {
       const iid = k.split('_')[1]; if (!iid) continue;
       const rids = v.RecipesThatUseItem||[];
-      const internals = rids.map(rid=>{
-        for (const [rk,rv] of Object.entries(RECIPES)) { if (rv && rv._rid === rid) return rk; }
-        return String(rid);
-      }).filter(Boolean);
+      const internals = rids.map(rid => RECIPE_RID_MAP[rid] || String(rid)).filter(Boolean);
       if (internals.length) out[iid] = internals;
     }
     return out;
   }
   if (key === 'sources_recipes') {
-    // Build rid -> internalName from loaded RECIPES, then map sources
-    const ridToInternal = {};
-    // We can't easily reverse RECIPES here — return raw keyed by recipe_NNN for now and resolve lazily
-    // Actually process same as pg_sources_recipes.json format using RECIPES if available
     const out = {};
     for (const [k, v] of Object.entries(raw)) {
       const rid = parseInt(k.split('_')[1]);
-      // Find internal name from RECIPES
-      let internal = '';
-      for (const [rk, rv] of Object.entries(RECIPES)) {
-        // RECIPES doesn't store rid, so we skip CDN processing — user should use local files
-        break;
-      }
+      const internal = RECIPE_RID_MAP[rid];
       if (!internal) continue;
       const entries = (v.entries||[]).map(e => {
         const entry = {t: e.type};
