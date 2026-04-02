@@ -37,3 +37,8 @@ jobs:
           git add GorgonHelper.html version.json
           git commit -m "Bump version to $NEW_VERSION"
           git push
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v$NEW_VERSION" --title "v$NEW_VERSION" --generate-notes
