@@ -870,17 +870,23 @@ async function tryLoadDataFromFolder(jsonFiles) {
     } catch(e) {}
   }
 
-  // Load originals from the Json/ subfolder
+  // Load originals from the Json/ subfolder — read all files in parallel, apply in order
   if (!folderHandle) return;
   let originalsDir;
   try { originalsDir = await folderHandle.getDirectoryHandle('Json'); } catch(e) { return; }
-  for (const df of DATA_FILES) {
-    if (!df.originals || dataLoaded[df.key]) continue;
+  const toLoad = DATA_FILES.filter(df => df.originals && !dataLoaded[df.key]);
+  // Kick off all file reads simultaneously
+  const reads = await Promise.all(toLoad.map(async df => {
     try {
       const fh = await originalsDir.getFileHandle(df.file);
       const raw = JSON.parse(await (await fh.getFile()).text());
-      applyGameData(df.key, processCDNData(df.key, raw));
-    } catch(e) {}
+      return { df, raw };
+    } catch(e) { return null; }
+  }));
+  // Apply in DATA_FILES order so dependency constraints hold
+  // (items before quests, npcs before sources_items, etc.)
+  for (const result of reads) {
+    if (result) applyGameData(result.df.key, processCDNData(result.df.key, result.raw));
   }
 }
 
