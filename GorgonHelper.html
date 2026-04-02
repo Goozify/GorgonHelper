@@ -5015,10 +5015,17 @@ function processCDNData(key, raw) {
         pref: p.Pref||0,
         keywords: p.Keywords||[]
       }));
+      let pos = null;
+      if (v.Pos) {
+        const mx = v.Pos.match(/x:([-\d.]+)/), mz = v.Pos.match(/z:([-\d.]+)/);
+        if (mx && mz) pos = { x: Math.round(parseFloat(mx[1]) * 100) / 100, z: Math.round(parseFloat(mz[1]) * 100) / 100 };
+      }
       out[k] = {
         name: v.Name||k.replace('NPC_',''),
         area: v.AreaFriendlyName||'',
+        areaName: v.AreaName||'',
         desc: v.Desc||'',
+        pos,
         services: (v.Services||[]).map(s=>({type:s.Type,favor:s.Favor,skills:s.Skills||[],unlocks:s.Unlocks||[]})),
         prefs
       };
