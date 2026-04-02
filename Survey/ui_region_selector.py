@@ -11,14 +11,22 @@ from PyQt5.QtWidgets import QWidget, QApplication
 
 class RegionSelector(QWidget):
     """Fullscreen selector that shows a frozen screenshot as background.
-    The user drags a rectangle; on release the screen coordinates are emitted."""
+    The user drags a rectangle; on release the screen coordinates are emitted.
+
+    Optional ``grid_cols`` / ``grid_rows``: when set, dividing lines are drawn
+    over the selection in real time so the user can see exactly how the area
+    will be split (e.g. 6×2 for the safecracking rune grid).
+    """
 
     region_selected = pyqtSignal(int, int, int, int)   # screen x, y, w, h
     cancelled = pyqtSignal()
 
-    def __init__(self, label: str = "Click and drag to select a region. Press Escape to cancel."):
+    def __init__(self, label: str = "Click and drag to select a region. Press Escape to cancel.",
+                 grid_cols: int = 0, grid_rows: int = 0):
         super().__init__(None)
         self._label = label
+        self._grid_cols = grid_cols
+        self._grid_rows = grid_rows
         self._start = QPoint()
         self._end = QPoint()
         self._selecting = False
@@ -135,6 +143,31 @@ class RegionSelector(QWidget):
             painter.setPen(QPen(QColor(255, 215, 0), 2))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(rect)
+
+            # Grid overlay (safecracking / any divided region)
+            if self._grid_cols > 1 or self._grid_rows > 1:
+                grid_pen = QPen(QColor(255, 215, 0, 160), 1, Qt.DashLine)
+                painter.setPen(grid_pen)
+                cw = rect.width() / self._grid_cols if self._grid_cols > 1 else rect.width()
+                ch = rect.height() / self._grid_rows if self._grid_rows > 1 else rect.height()
+                # Vertical dividers
+                for c in range(1, self._grid_cols):
+                    x = rect.x() + int(c * cw)
+                    painter.drawLine(x, rect.top(), x, rect.bottom())
+                # Horizontal dividers
+                for r in range(1, self._grid_rows):
+                    y = rect.y() + int(r * ch)
+                    painter.drawLine(rect.left(), y, rect.right(), y)
+                # Cell number labels
+                painter.setFont(QFont("Arial", 9, QFont.Bold))
+                painter.setPen(QColor(255, 215, 0, 200))
+                num = 1
+                for r in range(self._grid_rows):
+                    for c in range(self._grid_cols):
+                        cx = rect.x() + int(c * cw) + 4
+                        cy = rect.y() + int(r * ch) + 13
+                        painter.drawText(cx, cy, str(num))
+                        num += 1
 
             # Size label
             lbl = f"  {rect.width()} × {rect.height()} px  "

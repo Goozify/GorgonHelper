@@ -19,7 +19,7 @@ jobs:
 
       - name: Bump patch version
         run: |
-          FILE="mmorpg_inventory.html"
+          FILE="GorgonHelper.html"
           CURRENT=$(grep -o "APP_VERSION = '[0-9]*\.[0-9]*\.[0-9]*'" "$FILE" | grep -o "[0-9]*\.[0-9]*\.[0-9]*")
           MAJOR=$(echo "$CURRENT" | cut -d. -f1)
           MINOR=$(echo "$CURRENT" | cut -d. -f2)
@@ -34,6 +34,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add mmorpg_inventory.html version.json
+          git add GorgonHelper.html version.json
           git commit -m "Bump version to $NEW_VERSION"
           git push
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "v$NEW_VERSION" --title "v$NEW_VERSION" --generate-notes

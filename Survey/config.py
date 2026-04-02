@@ -36,6 +36,7 @@ class InventorySettings:
 class Config:
     inventory: InventorySettings = field(default_factory=InventorySettings)
     map_capture: ScreenRect = field(default_factory=ScreenRect)
+    safecracking_region: ScreenRect = field(default_factory=ScreenRect)
     chat_log_dir: str = DEFAULT_CHAT_LOG_DIR
     active_area: str = "AreaSerbule"
     overlay_mode: bool = False
@@ -85,6 +86,8 @@ class Config:
             )
         if "map_capture" in data:
             cfg.map_capture = ScreenRect(**data["map_capture"])
+        if "safecracking_region" in data:
+            cfg.safecracking_region = ScreenRect(**data["safecracking_region"])
         cfg.chat_log_dir = data.get("chat_log_dir", DEFAULT_CHAT_LOG_DIR)
         cfg.active_area = data.get("active_area", "AreaSerbule")
         cfg.overlay_mode = data.get("overlay_mode", False)

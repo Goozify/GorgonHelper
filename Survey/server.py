@@ -23,6 +23,7 @@ import websockets
 from config import Config
 from chat_watcher import ChatWatcher
 from survey_store import SurveyStore, SurveyLocation
+from safecracking import SafecrackingSolver, capture_symbols
 from route_solver import nearest_neighbor_route
 from PyQt5.QtWidgets import QApplication
 from ui_inventory_overlay import InventoryOverlay
@@ -207,6 +208,10 @@ class SurveyServer:
         # Region selector overlay (keep reference so Qt doesn't GC it)
         self._region_selector: Optional[RegionSelector] = None
 
+        # ── Safecracking state ──────────────────────────────────────────
+        self._sc_symbols: List[str] = []          # base64 thumbnails (up to 12)
+        self._sc_solver: Optional[SafecrackingSolver] = None
+
         # Region highlighter — transparent border shown while editing coords
         self._highlighter = RegionHighlighter()
 
@@ -276,6 +281,7 @@ class SurveyServer:
         try:
             # Send full state immediately on connect
             await self._send_state_full(ws)
+            await self._send(ws, self._sc_build_state())
             async for raw in ws:
                 try:
                     msg = json.loads(raw)
@@ -329,6 +335,7 @@ class SurveyServer:
             "config": {
                 "inventory": asdict(self.config.inventory),
                 "map_capture": asdict(self.config.map_capture),
+                "safecracking_region": asdict(self.config.safecracking_region),
                 "chat_log_dir": self.config.chat_log_dir,
                 "debug_auto_use":         self.config.debug_auto_use,
                 "auto_use_hotkey_vk":     self.config.auto_use_hotkey_vk,
@@ -401,6 +408,22 @@ class SurveyServer:
             self._highlighter.hide_region()
         elif t == "cmd_update_config":
             await self._update_config(msg)
+        # ── Safecracking commands ───────────────────────────────────────
+        elif t == "sc_select_region":
+            self._highlighter.hide_region()
+            self._launch_region_selector("safecracking")
+        elif t == "sc_capture":
+            await self._sc_capture()
+        elif t == "sc_reset":
+            symbol_count = int(msg.get("symbol_count", 12))
+            await self._sc_reset(symbol_count)
+        elif t == "sc_record":
+            guess   = [int(v) for v in msg.get("guess", [])]
+            exact   = int(msg.get("exact", 0))
+            misplaced = int(msg.get("misplaced", 0))
+            await self._sc_record(guess, exact, misplaced)
+        elif t == "sc_undo":
+            await self._sc_undo()
         elif t == "cmd_ping":
             await self._send(ws, {"type": "pong"})
         elif t == "cmd_shutdown":
@@ -1047,10 +1070,16 @@ class SurveyServer:
     def _launch_region_selector(self, purpose: str):
         """Show the fullscreen Qt region-selector overlay.  No browser round-trip needed."""
         labels = {
-            "inventory": "Drag to select the first inventory slot — Esc to cancel",
-            "map":       "Drag to select the game map region — Esc to cancel",
+            "inventory":    "Drag to select the first inventory slot — Esc to cancel",
+            "map":          "Drag to select the game map region — Esc to cancel",
+            "safecracking": "Select the 6×2 rune symbol grid ONLY (not the whole window) — Esc to cancel",
         }
-        selector = RegionSelector(labels.get(purpose, "Drag to select a region — Esc to cancel"))
+        grids = {
+            "safecracking": (6, 2),
+        }
+        cols, rows = grids.get(purpose, (0, 0))
+        selector = RegionSelector(labels.get(purpose, "Drag to select a region — Esc to cancel"),
+                                  grid_cols=cols, grid_rows=rows)
         self._region_selector = selector  # keep Qt reference alive
 
         selector.region_selected.connect(
@@ -1074,6 +1103,14 @@ class SurveyServer:
             inv.screen_y = y
             inv.slot_width = w
             inv.slot_height = h
+        elif purpose == "safecracking":
+            sc = self.config.safecracking_region
+            sc.x, sc.y, sc.w, sc.h = x, y, w, h
+            # Auto-capture symbols after region is set
+            self.config.save()
+            await self._send_state_full()
+            await self._sc_capture()
+            return
         self.config.save()
         await self._send_state_full()
 
@@ -1139,3 +1176,60 @@ class SurveyServer:
             log.info("Single-use hotkey mods changed to 0x%X", mods)
         self.config.save()
         await self.broadcast({"type": "status", "message": "Settings saved"})
+
+    # ------------------------------------------------------------------
+    # Safecracking helpers
+    # ------------------------------------------------------------------
+
+    def _sc_build_state(self) -> dict:
+        solver_state = self._sc_solver.to_dict() if self._sc_solver else None
+        return {
+            "type": "sc_state",
+            "solver": solver_state,
+        }
+
+    async def _sc_broadcast(self):
+        await self.broadcast(self._sc_build_state())
+
+    async def _sc_capture(self):
+        """Capture the rune-grid region and extract 12 symbol thumbnails."""
+        sc = self.config.safecracking_region
+        if sc.w <= 0 or sc.h <= 0:
+            await self.broadcast({"type": "error", "message": "Safecracking region not set — use Select Region first"})
+            return
+        log.info("SC capture  region=(%d,%d,%d,%d)", sc.x, sc.y, sc.w, sc.h)
+        thumbs = capture_symbols(sc.x, sc.y, sc.w, sc.h)
+        if not thumbs:
+            await self.broadcast({"type": "error", "message": "Screen capture failed — check Pillow installation"})
+            return
+        self._sc_symbols = thumbs
+        # Auto-init solver with all 12 symbols if not yet created
+        if self._sc_solver is None:
+            self._sc_solver = SafecrackingSolver(list(range(1, len(thumbs) + 1)))
+        await self._sc_broadcast()
+
+    async def _sc_reset(self, symbol_count: int):
+        """Reset the solver for a new puzzle."""
+        n = min(max(symbol_count, 2), 12)
+        symbols = list(range(1, n + 1))
+        if self._sc_solver is None:
+            self._sc_solver = SafecrackingSolver(symbols)
+        else:
+            self._sc_solver.reset(symbols)
+        log.info("SC reset  symbols=%s", symbols)
+        await self._sc_broadcast()
+
+    async def _sc_record(self, guess: List[int], exact: int, misplaced: int):
+        """Record a guess result and update solver state."""
+        if self._sc_solver is None:
+            self._sc_solver = SafecrackingSolver(list(range(1, 13)))
+        self._sc_solver.record(guess, exact, misplaced)
+        log.info("SC record  guess=%s exact=%d misplaced=%d  candidates=%d",
+                 guess, exact, misplaced, self._sc_solver.candidates_count)
+        await self._sc_broadcast()
+
+    async def _sc_undo(self):
+        """Undo the last recorded guess."""
+        if self._sc_solver and self._sc_solver.undo():
+            log.info("SC undo  candidates=%d", self._sc_solver.candidates_count)
+        await self._sc_broadcast()

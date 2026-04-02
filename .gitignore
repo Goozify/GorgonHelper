@@ -13,7 +13,10 @@ pg_landmarks.zip
 
 .claude/
 Original/
-Originals/
+
+# pg_* files replaced by Json/ folder (CDN originals)
+pg_*.json
+RecycleBin/
 
 # Python
 __pycache__/
@@ -21,3 +24,13 @@ __pycache__/
 
 # Survey runtime data (config, saved state)
 Survey/data/
+
+# Icons downloaded from CDN — users pull these via the tool
+icons/icon_*.png
+icons/Map_*.png
+
+# Wiki marked maps and calibration scripts (not used by the app)
+Maps/marked/
+Maps/calibrate_maps.py
+Maps/calibration_from_wiki.json
+Maps/map_calibration.json
