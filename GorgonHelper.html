@@ -1306,11 +1306,12 @@ function renderAll() {
 
 function renderCharTabs() {
   const el = document.getElementById('charTabsRow');
-  if (mainTab !== 'storage' && mainTab !== 'workorders' && mainTab !== 'vaults' && mainTab !== 'favors' && mainTab !== 'quests' && mainTab !== 'maps') { el.innerHTML=''; return; }
+  if (mainTab !== 'storage' && mainTab !== 'workorders' && mainTab !== 'vaults' && mainTab !== 'favors' && mainTab !== 'quests' && mainTab !== 'maps' && mainTab !== 'recipes') { el.innerHTML=''; return; }
   const isWO = (mainTab === 'workorders');
   const isVault = (mainTab === 'vaults');
   const isFavor = (mainTab === 'favors');
   const isQuest = (mainTab === 'quests');
+  const isRecipes = (mainTab === 'recipes');
   el.innerHTML = characters.map(c => `
     <div class="char-tab ${c.id===activeCharId?'active':''}" onclick="setActiveChar('${c.id}')">
       ${c.charData.Character}
@@ -1318,7 +1319,7 @@ function renderCharTabs() {
       <span class="badge">${c.items.length}</span>
       ${characters.length>1?`<span onclick="removeChar('${c.id}',event)" style="margin-left:1px;color:var(--text-dim);font-size:11px;opacity:.5" title="Remove">✕</span>`:''}
     </div>`).join('')
-    + ((isWO || isVault || isFavor || isQuest) && characters.length > 1 ? `<div class="char-tab all-tab ${activeCharId==='__all__'?'active':''}" onclick="setActiveChar('__all__')">All Characters</div>` : '')
+    + ((isWO || isVault || isFavor || isQuest || isRecipes) && characters.length > 1 ? `<div class="char-tab all-tab ${activeCharId==='__all__'?'active':''}" onclick="setActiveChar('__all__')">All Characters</div>` : '')
     + (isWO ? `<div class="char-tab ${activeCharId==='__availwo__'?'active':''}" onclick="setActiveChar('__availwo__')" title="Work Order scrolls in storage">📜 Available</div>` : '')
     + (isFavor ? `<div class="char-tab ${activeCharId==='__favorcalc__'?'active':''}" onclick="setActiveChar('__favorcalc__')" title="Favor Calculator"><span style="color:var(--gold);font-size:16px;line-height:1">Σ</span> Calculator</div>` : '')
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
@@ -3455,6 +3456,8 @@ function toggleRecipeRow(k) {
 }
 
 function buildRecipeRows(displayList, allRecipeKeys) {
+  const showAllChars = activeCharId === '__all__' && characters.length > 1;
+  const activeChar = showAllChars ? null : (characters.find(c => c.id === activeCharId) || characters[0]);
   return displayList.map(([k, r]) => {
     const [rName, rSkill, , resultItems, skillLevelReq] = r;
     const expanded = expandedRecipes.has(k);
@@ -3469,21 +3472,23 @@ function buildRecipeRows(displayList, allRecipeKeys) {
       if (iconUrl) recipeIconHtml = `<img class="recipe-icon" src="${iconUrl}" alt="">`;
     }
 
-    // Characters stacked vertically — always visible
-    const charStack = characters.map(char => {
-      const rc = char.charData.RecipeCompletions || {};
-      const has = (rc[k] || 0) > 0;
-      return `<div style="display:flex;align-items:center;gap:5px;padding:1px 0">
-        <span style="font-size:11px;color:${has?'var(--green)':'var(--red)'};flex-shrink:0">${has?'✓':'✗'}</span>
-        <span style="font-size:11px;color:${has?'var(--text)':'var(--text-dim)'}">${char.charData.Character}</span>
-      </div>`;
-    }).join('');
+    // All Characters: stacked list. Single char: compact ✓/✗ badge
+    let charCell = '';
+    if (showAllChars) {
+      charCell = `<td style="white-space:nowrap">${characters.map(char => {
+        const has = (char.charData.RecipeCompletions||{})[k] > 0;
+        return `<div style="display:flex;align-items:center;gap:5px;padding:1px 0">
+          <span style="font-size:11px;color:${has?'var(--green)':'var(--red)'};flex-shrink:0">${has?'✓':'✗'}</span>
+          <span style="font-size:11px;color:${has?'var(--text)':'var(--text-dim)'}">${char.charData.Character}</span>
+        </div>`;
+      }).join('')}</td>`;
+    }
 
     if (!expanded) {
       return `<tr class="recipe-row" style="cursor:pointer" onclick="toggleRecipeRow('${safeK}')">
         <td><div style="display:flex;align-items:center;gap:4px">${recipeIconHtml}<span class="recipe-name">${rName}</span>${cookingKwTag(r)}<span style="font-size:11px;color:var(--text-dim);margin-left:4px">▼</span></div></td>
         <td><span class="recipe-skill-tag">${rSkill}</span>${skillLevelReq > 0 ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">Lv.${skillLevelReq}</span>` : ''}</td>
-        <td style="white-space:nowrap">${charStack}</td>
+        ${charCell}
       </tr>`;
     }
 
@@ -3559,14 +3564,16 @@ function buildRecipeRows(displayList, allRecipeKeys) {
         </div>
       </td>
       <td><span class="recipe-skill-tag">${rSkill}</span>${skillLevelReq > 0 ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">Lv.${skillLevelReq}</span>` : ''}</td>
-      <td style="white-space:nowrap">${charStack}</td>
+      ${charCell}
     </tr>`;
   }).join('');
 }
 
 function getRecipeDisplayList() {
+  const isAll = activeCharId === '__all__' || characters.length <= 1;
+  const activeChars = isAll ? characters : characters.filter(c => c.id === activeCharId);
   const allRecipeKeys = new Set();
-  for (const char of characters) Object.keys(char.charData.RecipeCompletions||{}).forEach(k=>allRecipeKeys.add(k));
+  for (const char of activeChars) Object.keys(char.charData.RecipeCompletions||{}).forEach(k=>allRecipeKeys.add(k));
   let pool = Object.entries(RECIPES);
   if (recipeSkillFilter) pool = pool.filter(([,r])=>r[1]===recipeSkillFilter);
   if (recipeSearchQ) {
@@ -3627,7 +3634,7 @@ function renderRecipesTab() {
       ${display.length===0
         ? `<div class="empty-state" id="recipeEmpty"><div class="icon">📖</div><h3>No recipes found</h3></div>`
         : `<table class="recipe-table">
-            <thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th><th>Characters</th></tr></thead>
+            <thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th>${activeCharId==='__all__'&&characters.length>1?'<th>Characters</th>':''}</tr></thead>
             <tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody>
           </table>`}
     </div>
@@ -3663,7 +3670,7 @@ function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCo
     tbody.innerHTML = buildRecipeRows(display, allRecipeKeys);
   } else {
     // Table didn't exist before (was showing empty state), rebuild fully
-    wrap.innerHTML = `<table class="recipe-table"><thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th><th>Characters</th></tr></thead><tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody></table>`;
+    wrap.innerHTML = `<table class="recipe-table"><thead><tr><th>Recipe</th><th style="cursor:pointer;user-select:none" onclick="cycleRecipeSkillSort()" id="recipeSkillTh">Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}</th>${activeCharId==='__all__'&&characters.length>1?'<th>Characters</th>':''}</tr></thead><tbody id="recipeTableBody">${buildRecipeRows(display, allRecipeKeys)}</tbody></table>`;
   }
 }
 
