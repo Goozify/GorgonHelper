@@ -1277,7 +1277,7 @@ function setMainTab(tab) {
   // Update settings button highlight
   const sb = document.getElementById('hdr-settings-btn');
   if (sb) sb.style.borderColor = tab === 'settings' ? 'var(--gold-dim)' : 'var(--border)';
-  const showCharTabs = (tab === 'storage' || tab === 'workorders' || tab === 'vaults' || tab === 'favors' || tab === 'quests');
+  const showCharTabs = (tab === 'storage' || tab === 'workorders' || tab === 'vaults' || tab === 'favors' || tab === 'quests' || tab === 'recipes');
   document.getElementById('charTabsRow').style.display = showCharTabs ? '' : 'none';
   renderAll();
 }
