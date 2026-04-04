@@ -5656,8 +5656,8 @@ function renderGardeningTab(targetEl) {
   const STAGE_ORDER = { ripe: 0, thirsty: 1, needs_fertilizer: 2, growing: 3, planted: 4, harvested: 5 };
 
   const sessionBtn = gardenSessionActive
-    ? `<button onclick="stopGardenSession()" style="background:#e0706020;border:1px solid #e07060;color:#e07060;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">■ Stop</button>`
-    : `<button onclick="startGardenSession()" style="background:#4caf5020;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">▶ Start</button>`;
+    ? `<button class="sync-btn danger" onclick="stopGardenSession()">⏹ Stop</button>`
+    : `<button class="sync-btn" onclick="startGardenSession()" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">▶ Start</button>`;
 
   const chars = Object.keys(gardenData).filter(c => Object.keys(gardenData[c]?.plots || {}).length > 0);
 
@@ -5668,7 +5668,7 @@ function renderGardeningTab(targetEl) {
       <div style="font-size:13px;max-width:320px;margin:0 auto 20px;line-height:1.5">
         Press Start before planting seeds to begin tracking your garden plots.
       </div>
-      <button onclick="startGardenSession()" style="background:#4caf5020;border:1px solid #4caf50;color:#4caf50;border-radius:4px;padding:6px 24px;font-size:13px;cursor:pointer;font-family:'Cinzel',serif">▶ Start</button>
+      <button class="sync-btn" onclick="startGardenSession()" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold);font-size:13px;padding:8px 28px">▶ Start</button>
     </div>`;
     return;
   }
@@ -5677,7 +5677,7 @@ function renderGardeningTab(targetEl) {
   const statusDot = gardenSessionActive
     ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#4caf50;margin-right:5px;box-shadow:0 0 5px #4caf5088"></span><span style="color:#4caf50;font-size:11px">Monitoring</span>`
     : `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#666;margin-right:5px"></span><span style="color:var(--text-dim);font-size:11px">Stopped</span>`;
-  let html = `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">${statusDot}<span style="flex:1"></span>${sessionBtn}</div>`;
+  let html = `<div style="display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">${sessionBtn}<span style="flex:1"></span>${statusDot}</div>`;
 
   if (chars.length === 0) {
     html += `<div style="padding:24px;text-align:center;color:var(--text-dim);font-size:13px">No plots detected yet. Plant seeds in-game to see them here.</div>`;
@@ -5704,8 +5704,8 @@ function renderGardeningTab(targetEl) {
         ${ripeCnt > 0 ? `<span style="background:#f0c04020;color:#f0c040;border:1px solid #f0c04055;border-radius:10px;padding:1px 8px;font-size:11px;font-family:sans-serif">🌾 ${ripeCnt} ready</span>` : ''}
         ${needsCnt > 0 ? `<span style="background:#5b9bd520;color:#5b9bd5;border:1px solid #5b9bd555;border-radius:10px;padding:1px 8px;font-size:11px;font-family:sans-serif">⚠ ${needsCnt} need attention</span>` : ''}
         <span style="flex:1"></span>
-        ${ripeCnt > 0 ? `<button onclick="markAllHarvested('${safeCharHeader}')" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:sans-serif" title="Mark all plots as harvested">✓ Harvest All</button>` : ''}
-        <button onclick="if(confirm('Clear all garden data for ${charName}?')) clearAllGardenData('${safeCharHeader}')" style="background:none;border:1px solid var(--border);color:var(--text-dim);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:sans-serif" title="Remove all plot data for this character">✕ Reset</button>
+        ${ripeCnt > 0 ? `<button class="sync-btn" onclick="markAllHarvested('${safeCharHeader}')" title="Mark all plots as harvested">✓ Harvest All</button>` : ''}
+        <button class="sync-btn danger" onclick="if(confirm('Clear all garden data for ${charName}?')) clearAllGardenData('${safeCharHeader}')" title="Remove all plot data for this character">✕ Reset</button>
       </div>`;
 
     // ── Capacity section ─────────────────────────────────────
@@ -5805,7 +5805,7 @@ function renderGardeningTab(targetEl) {
     if (harvestedPlots.length > 0) {
       html += `<div style="padding:2px 12px 8px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border)">
         <span style="font-size:11px;color:var(--text-dim)">✅ ${harvestedPlots.length} harvested</span>
-        <button onclick="clearHarvestedPlots('${charName.replace(/'/g,"\\'")}')" style="background:none;border:1px solid var(--border);color:var(--text-dim);font-size:11px;cursor:pointer;padding:2px 8px;border-radius:4px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text-dim)'">✕ Clear harvested</button>
+        <button class="sync-btn" onclick="clearHarvestedPlots('${charName.replace(/'/g,"\\'")}')">✕ Clear harvested</button>
       </div>`;
     }
 
