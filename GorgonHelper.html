@@ -441,6 +441,7 @@ let mainTab = 'storage';
 let searchQuery = '';
 let searchMode = 'single';
 let activeVaultFilter = null;
+let activeTownFilter = '';
 let showConsolidateOnly = false;
 
 // Tools tab state
@@ -1326,7 +1327,7 @@ function renderCharTabs() {
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
 }
 
-function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; completedWOSearch = ''; renderAll(); }
+function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; completedWOSearch = ''; renderAll(); }
 function removeChar(id, e) {
   e.stopPropagation();
   if (characters.length===1) { showToast("Can't remove last character"); return; }
@@ -1438,14 +1439,50 @@ function renderModeToggle() {
     <button class="mode-btn ${searchMode==='all'?'active':''}" onclick="setSearchMode('all')">All Characters</button>
   </div>`;
 }
-function setSearchMode(m) { searchMode=m; activeVaultFilter=null; rerenderRight(); }
+function setSearchMode(m) { searchMode=m; activeVaultFilter=null; activeTownFilter=''; rerenderRight(); }
 function clearSearch() { searchQuery=''; rerenderRight(); }
 function onSearch(v) { searchQuery=v; rerenderRight(); }
 function toggleVaultFilter(v) { activeVaultFilter = activeVaultFilter===v?null:v; rerenderRight(); }
 function toggleConsolidate() { showConsolidateOnly=!showConsolidateOnly; rerenderRight(); }
+function toggleTownFilter(town) {
+  activeTownFilter = (activeTownFilter === town) ? '' : town;
+  // Drop vault filter if it's not in the newly selected town
+  if (activeTownFilter && activeVaultFilter && getVaultTown(activeVaultFilter) !== activeTownFilter) {
+    activeVaultFilter = null;
+  }
+  rerenderRight();
+}
+function getVaultTown(vaultKey) {
+  const vd = VAULTS[vaultKey];
+  return vd ? getVaultArea(vaultKey, vd) : null;
+}
+
+function renderTownFilters(allVaults) {
+  const townSet = new Set();
+  for (const v of allVaults) {
+    const t = getVaultTown(v);
+    if (t && t !== 'Unknown') townSet.add(t);
+  }
+  const towns = [...townSet].sort();
+  if (towns.length <= 1) return '';
+  const chips = towns.map(town => {
+    const active = activeTownFilter === town;
+    return `<span class="filter-chip ${active?'active':''}" onclick="toggleTownFilter('${town.replace(/'/g,"\\'")}')">
+      ${town}</span>`;
+  }).join('');
+  return `<div class="filter-row" style="margin-bottom:4px">
+    <span class="filter-chip ${!activeTownFilter?'active':''}" onclick="toggleTownFilter('')">All Locations</span>
+    <span class="filter-divider"></span>
+    ${chips}
+  </div>`;
+}
 
 function renderVaultFilters(allVaults) {
-  const chips = allVaults.map(v => {
+  // Scope vault chips to the selected town
+  const visibleVaults = activeTownFilter
+    ? allVaults.filter(v => getVaultTown(v) === activeTownFilter)
+    : allVaults;
+  const chips = visibleVaults.map(v => {
     const c=vc(v), isA=activeVaultFilter===v;
     return `<span class="filter-chip ${isA?'active':''}" style="${isA?`border-color:${c.border};color:${c.text};background:${c.bg}`:''}" onclick="toggleVaultFilter('${v.replace(/'/g,"\\\'")}')">
       <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${c.dot};margin-right:3px;vertical-align:middle"></span>${fvn(v)}</span>`;
@@ -1465,7 +1502,7 @@ function renderVaultFilters(allVaults) {
     cCount = charItems.filter(i => getConsolidationInfo(i.name, i.vaults, i.typeId)).length;
   }
 
-  return `<div class="filter-row">${chips}${allVaults.length?'<span class="filter-divider"></span>':''}
+  return `<div class="filter-row">${chips}${visibleVaults.length?'<span class="filter-divider"></span>':''}
     <span class="filter-chip consolidate-chip ${showConsolidateOnly?'active':''}" onclick="toggleConsolidate()">⚡ Consolidate${cCount?` <strong>${cCount}</strong>`:''}</span>
   </div>`;
 }
@@ -1510,8 +1547,13 @@ function renderRight(char) {
   const q = searchQuery.toLowerCase().trim();
   const allVaults = [...new Set(char.items.flatMap(i=>Object.keys(i.vaults)))]
     .sort((a,b)=>a==='Inventory'?-1:b==='Inventory'?1:a.localeCompare(b));
+  // Build set of vaults in the active town for filtering
+  const townVaultSet = activeTownFilter
+    ? new Set(allVaults.filter(v => getVaultTown(v) === activeTownFilter))
+    : null;
   let items = char.items;
   if (q) items = items.filter(i=>i.name.toLowerCase().includes(q));
+  if (townVaultSet) items = items.filter(i=>Object.keys(i.vaults).some(v=>townVaultSet.has(v)));
   if (activeVaultFilter) items = items.filter(i=>i.vaults[activeVaultFilter]!==undefined);
   if (showConsolidateOnly) items = items.filter(i=>getConsolidationInfo(i.name,i.vaults,i.typeId));
   const rows = items.map(i=>renderItemRow(i.name,i.vaults,i.total,i.typeId,i.value,q,null,getConsolidationInfo(i.name,i.vaults,i.typeId))).join('');
@@ -1543,7 +1585,8 @@ function renderRight(char) {
         <span class="search-icon">⌕</span>
       </div>
     </div>
-    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${char.items.length}</span> items${activeVaultFilter?` · <span style="color:${vc(activeVaultFilter).text}">${fvn(activeVaultFilter)}</span>`:''}</div></div>
+    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${char.items.length}</span> items${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}${activeVaultFilter?` · <span style="color:${vc(activeVaultFilter).text}">${fvn(activeVaultFilter)}</span>`:''}</div></div>
+    ${renderTownFilters(allVaults)}
     ${renderVaultFilters(allVaults)}
     ${totalValueHtml}${slotInfoHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
@@ -1568,11 +1611,21 @@ function buildMergedAllItems() {
 function renderRightAll() {
   const q = searchQuery.toLowerCase().trim();
   const merged = buildMergedAllItems();
+  // All vaults that appear across all characters (for town filter)
+  const allVaultsAll = [...new Set(characters.flatMap(c => c.items.flatMap(i => Object.keys(i.vaults))))]
+    .sort((a,b)=>a==='Inventory'?-1:b==='Inventory'?1:a.localeCompare(b));
+  const townVaultSet = activeTownFilter
+    ? new Set(allVaultsAll.filter(v => getVaultTown(v) === activeTownFilter))
+    : null;
   let items = merged;
   if (q) items = items.filter(i=>i.name.toLowerCase().includes(q));
+  if (townVaultSet) items = items.filter(i=>Object.values(i.byChar).some(cd=>Object.keys(cd.vaults).some(v=>townVaultSet.has(v))));
   if (showConsolidateOnly) items = items.filter(i=>Object.values(i.byChar).some(cd=>getConsolidationInfo(i.name,cd.vaults,i.typeId)));
   const rows = items.flatMap(item => {
-    const charEntries = Object.values(item.byChar);
+    // In town-filter mode, only show the char rows that have items in that town
+    const charEntries = townVaultSet
+      ? Object.values(item.byChar).filter(cd => Object.keys(cd.vaults).some(v => townVaultSet.has(v)))
+      : Object.values(item.byChar);
     return charEntries.map(cd => renderItemRow(item.name, cd.vaults, cd.total, item.typeId, item.value, q, cd.charName, getConsolidationInfo(item.name, cd.vaults, item.typeId)));
   }).join('');
   const totalValue = items.reduce((s,i)=>s+(i.value||0)*i.total, 0);
@@ -1588,7 +1641,8 @@ function renderRightAll() {
         <span class="search-icon">⌕</span>
       </div>
     </div>
-    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${merged.length}</span> unique items across <span>${characters.length}</span> characters</div></div>
+    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${merged.length}</span> unique items across <span>${characters.length}</span> characters${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}</div></div>
+    ${renderTownFilters(allVaultsAll)}
     ${renderVaultFilters([])}
     ${totalValueHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
