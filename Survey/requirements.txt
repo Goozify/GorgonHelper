@@ -3,5 +3,3 @@ opencv-python>=4.5
 Pillow>=9.0
 numpy>=1.21
 websockets>=12.0
-qasync>=0.27.1
-# Optional: enables auto-OCR of guess feedback numbers in safecracking.

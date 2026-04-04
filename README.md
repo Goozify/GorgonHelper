@@ -31,7 +31,7 @@ Open a terminal in the `Survey/` folder and run:
 pip install -r requirements.txt
 ```
 
-This installs PyQt5, opencv-python, Pillow, numpy, websockets, and qasync.
+This installs PyQt5, opencv-python, Pillow, numpy, and websockets.
 You can skip this step if you only need the browser-based inventory/character features.
 
 ### 3. Start the server
