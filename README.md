@@ -98,6 +98,43 @@ Both files are written to your `Reports` folder and picked up automatically as l
 
 ---
 
+## Survey tool setup
+
+The Survey tool runs a local Python process that watches your chat log, highlights inventory slots, and overlays the optimal route on your in-game map.
+
+### 1. Install Python dependencies
+
+Open a terminal inside the `Survey/` folder and run:
+
+```
+pip install -r requirements.txt
+```
+
+This installs: **PyQt5**, **opencv-python**, **Pillow**, **numpy**, **websockets**, and **qasync**.
+
+### 2. Register the launcher (one time)
+
+Still in the `Survey/` folder:
+
+```
+py setup_survey.py
+```
+
+This registers the `gorgon-survey://` custom URL protocol in the Windows registry (no admin rights needed), so the **▶ Start Survey Helper** button in the app can launch `main.pyw` directly. To undo: `py setup_survey.py remove`
+
+### 3. Start the tool
+
+Click **▶ Start Survey Helper** in **Tools → Survey**, or run manually:
+
+```
+cd Survey
+py main.pyw
+```
+
+The process starts both the WebSocket server (port 8765) and the HTTP file server (port 3000) — no need to run `start_server.py` separately.
+
+---
+
 ## Survey tool tips
 
 The Survey tool (Tools → Survey) uses screen capture to track survey map locations and guide you through optimal routes.
