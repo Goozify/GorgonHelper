@@ -22,7 +22,19 @@ Clone the repository or download it as a ZIP and extract it anywhere you like:
 git clone https://github.com/Goozify/GorgonHelper.git
 ```
 
-### 2. Start the server
+### 2. Install Python dependencies (Survey tool)
+
+If you plan to use the **Survey tool**, install its required packages first.
+Open a terminal in the `Survey/` folder and run:
+
+```
+pip install -r requirements.txt
+```
+
+This installs PyQt5, opencv-python, Pillow, numpy, websockets, and qasync.
+You can skip this step if you only need the browser-based inventory/character features.
+
+### 3. Start the server
 
 Open a terminal in the folder and run:
 
@@ -39,11 +51,11 @@ GorgonHelper serving on http://localhost:3000
 
 **Alternative — no server needed:** You can also open `GorgonHelper.html` directly in Chrome or Edge (double-click the file). Folder watching and live updates still work. The server is only needed for the in-app update feature.
 
-### 3. Open in Chrome or Edge
+### 4. Open in Chrome or Edge
 
 Navigate to **http://localhost:3000/GorgonHelper.html** in Chrome or Edge.
 
-### 4. Watch your Reports folder
+### 5. Watch your Reports folder
 
 The game writes character data to:
 ```
@@ -61,7 +73,7 @@ C:\Users\<you>\AppData\LocalLow\Elder Game\Project Gorgon\player.log
 ```
 In **Settings** → **Player Log**, click **📂 Watch player.log** and select that file.
 
-### 5. Sync game data
+### 6. Sync game data
 
 Still in **Settings**, under **Game Data Files**, click **Sync All** to download the latest item, recipe, and NPC data from the Project Gorgon CDN.
 
