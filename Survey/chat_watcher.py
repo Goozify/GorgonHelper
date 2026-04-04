@@ -138,6 +138,7 @@ class ChatWatcher(QThread):
         m = ADDED_RE.search(line)
         if m:
             name = m.group(1)
-            qty  = int(m.group(2)) if m.group(2) else 1
+            # Only emit survey_completed — "added to inventory" covers survey map
+            # consumption but also every random pickup (foraging, bags, etc.),
+            # so we deliberately do NOT emit loot_received here.
             self.survey_completed.emit(name)
-            self.loot_received.emit(name, qty)
