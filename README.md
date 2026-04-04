@@ -32,6 +32,7 @@ pip install -r requirements.txt
 ```
 
 This installs PyQt5, opencv-python, Pillow, numpy, and websockets.
+`pip` is included with Python 3.4+ — if the command isn't found, see the [pip installation guide](https://pip.pypa.io/en/stable/installation/).
 You can skip this step if you only need the browser-based inventory/character features.
 
 ### 3. Start the server
