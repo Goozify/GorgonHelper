@@ -879,6 +879,7 @@ class SurveyServer:
         if self._auto_use_active:
             return
         self._auto_use_active = True
+        self.inv_overlay.set_error_slot(None)  # clear any previous error
         count = 0
         log.info("AUTO-USE  starting from slot %d", self._current_scan_slot)
         await self.broadcast({"type": "status", "message": "Auto-use: starting…"})
@@ -919,7 +920,17 @@ class SurveyServer:
                         await asyncio.wait_for(self._auto_use_pin_event.wait(), timeout=PIN_TIMEOUT)
                         log.debug("AUTO-USE  pin detected for slot %d", slot)
                     except asyncio.TimeoutError:
-                        log.warning("AUTO-USE  pin timeout at slot %d — map OCR didn't detect crosshair", slot)
+                        log.warning("AUTO-USE  pin timeout at slot %d — map OCR didn't detect circle", slot)
+                        # Revert scan slot so yellow highlight stays on the failed slot
+                        self._current_scan_slot = slot
+                        self.inv_overlay.set_current_slot(slot)
+                        self.inv_overlay.set_error_slot(slot)
+                        await self.broadcast({
+                            "type": "status",
+                            "message": f"⚠ Map circle not detected at slot {slot + 1} — auto-use paused. "
+                                       f"Wait for the circle to appear, then press the hotkey to continue.",
+                        })
+                        break
 
                 count += 1
                 await asyncio.sleep(INTER_DELAY)
@@ -1094,6 +1105,17 @@ class SurveyServer:
         # Wake auto-use loop if it's waiting for the map to detect this pin
         if self._auto_use_pin_event and not self._auto_use_pin_event.is_set():
             self._auto_use_pin_event.set()
+        # If a previous pin timed out and left an error indicator, clear it now —
+        # the circle eventually appeared so the slot position will be recorded.
+        if self.inv_overlay._error_slot is not None:
+            self.inv_overlay.set_error_slot(None)
+            # Advance scan slot past the recovered slot so auto-use can resume correctly
+            self._current_scan_slot = self.inv_overlay._current_slot + 1
+            self.inv_overlay.set_current_slot(self._current_scan_slot)
+            asyncio.ensure_future(self.broadcast({
+                "type": "status",
+                "message": f"✓ Circle detected — slot {self.inv_overlay._current_slot + 1} recovered. Press hotkey to continue.",
+            }))
         asyncio.ensure_future(self.broadcast({
             "type": "circle_pin_added",
             "pixel_x": cx, "pixel_y": cy,

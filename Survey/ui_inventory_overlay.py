@@ -59,6 +59,7 @@ class InventoryOverlay(QWidget):
         self._visible = False
         self._slot_labels: dict = {}  # slot_index -> route number string
         self._highlight_slot: Optional[int] = None  # next unvisited slot to highlight
+        self._error_slot: Optional[int] = None      # slot where pin detection failed (red alert)
 
         # Blink animation
         self._blink_on = True
@@ -89,6 +90,11 @@ class InventoryOverlay(QWidget):
 
     def set_current_slot(self, slot_index: int):
         self._current_slot = slot_index
+        self.update()
+
+    def set_error_slot(self, slot_index: Optional[int]):
+        """Highlight a slot in red — used when map circle detection failed."""
+        self._error_slot = slot_index
         self.update()
 
     def set_slot_labels(self, labels: dict,
@@ -177,6 +183,17 @@ class InventoryOverlay(QWidget):
             else:
                 painter.setPen(QPen(QColor(255, 255, 0, 110), 2))
                 painter.setBrush(QColor(255, 255, 0, 15))
+            painter.drawRect(sx, sy, self._slot_width, self._slot_height)
+
+        # --- Error slot: red blinking outline (drawn on top in any mode) ---
+        if self._error_slot is not None:
+            sx, sy = self._slot_rect(self._error_slot)
+            if self._blink_on:
+                painter.setPen(QPen(QColor(255, 60, 60), 3))
+                painter.setBrush(QColor(255, 60, 60, 50))
+            else:
+                painter.setPen(QPen(QColor(255, 60, 60, 140), 2))
+                painter.setBrush(QColor(255, 60, 60, 20))
             painter.drawRect(sx, sy, self._slot_width, self._slot_height)
 
         painter.end()
