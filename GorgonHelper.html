@@ -6278,11 +6278,13 @@ function renderSurveyTab(targetEl) {
     <strong style="color:var(--text)">HTTP file server</strong> (port 3000) — no need to run
     <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">start_server.py</code> separately.
     To stop everything, use the <strong style="color:var(--text)">⏹ Stop Server</strong> button in Survey → ⚙ Settings.<br><br>
-    <strong style="color:var(--text)">First-time setup:</strong> run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py</code> once.<br>
-    This registers a <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> custom URL protocol under
-    <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">HKCU\Software\Classes\gorgon-survey</code> in the Windows registry,
-    pointing to <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">pythonw.exe Survey\main.pyw</code>.
-    No admin rights required. To undo: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py remove</code>
+    <strong style="color:var(--text)">First-time setup:</strong> install the required Python packages, then register the launcher.<br>
+    Open a terminal in the <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Survey/</code> folder and run:<br><br>
+    <code style="background:var(--bg3);padding:2px 8px;border-radius:3px;color:var(--gold)">pip install -r requirements.txt</code><br><br>
+    Then register the <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> URL protocol (needed for the ▶ button above):<br><br>
+    <code style="background:var(--bg3);padding:2px 8px;border-radius:3px;color:var(--gold)">py setup_survey.py</code><br><br>
+    This writes to <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">HKCU\Software\Classes\gorgon-survey</code> — no admin rights required.
+    To undo: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py remove</code>
   </div>
   <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
     <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Or start manually:</div>
