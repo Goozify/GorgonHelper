@@ -51,6 +51,7 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .char-tab.add-tab{color:var(--text-dim);font-size:15px;padding:5px 12px;font-family:monospace}
 .char-tab.add-tab:hover{color:var(--gold)}
 .char-tab.all-tab{font-style:italic}
+.char-tab .log-warn{font-size:11px;font-weight:700;color:#e05555;line-height:1;margin-left:-2px}
 
 /* ── Layout ── */
 .layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 130px)}
@@ -1350,6 +1351,7 @@ function renderCharTabs() {
   el.innerHTML = characters.map(c => `
     <div class="char-tab ${c.id===activeCharId?'active':''}" onclick="setActiveChar('${c.id}')">
       ${c.charData.Character}
+      ${!playerLogWatchActive ? `<span class="log-warn" title="Player log not connected — favor data may be stale">!</span>` : ''}
       <span style="font-size:10px;color:var(--text-dim)">${c.charData.ServerName}</span>
       <span class="badge">${c.items.length}</span>
       ${characters.length>1?`<span onclick="removeChar('${c.id}',event)" style="margin-left:1px;color:var(--text-dim);font-size:11px;opacity:.5" title="Remove">✕</span>`:''}
@@ -2792,6 +2794,7 @@ async function watchPlayerLog() {
     playerLogWatchActive = true;
     await dbPut('player_log_handle', 'handle', handle);
     startPlayerLogWatcher();
+    renderCharTabs();
     if (mainTab === 'settings') renderSettingsTab();
   } catch(e) { /* user cancelled */ }
 }
@@ -2799,6 +2802,7 @@ async function watchPlayerLog() {
 function stopPlayerLogWatch() {
   if (playerLogWatchTimer) { clearInterval(playerLogWatchTimer); playerLogWatchTimer = null; }
   playerLogWatchActive = false;
+  renderCharTabs();
   if (mainTab === 'settings') renderSettingsTab();
 }
 
@@ -2832,6 +2836,7 @@ async function pollPlayerLog() {
   } catch(e) {
     // File moved or permission lost
     playerLogWatchActive = false;
+    renderCharTabs();
     if (mainTab === 'settings') renderSettingsTab();
   }
 }
@@ -2867,6 +2872,7 @@ async function resumePlayerLog() {
       playerLogWatchActive = true;
       await dbPut('player_log_handle', 'handle', handle);
       startPlayerLogWatcher();
+      renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
     }
   } catch(e) {}
