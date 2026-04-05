@@ -3114,7 +3114,7 @@ function renderFavorsTab() {
       const sepRow = `<tr><td colspan="2" style="padding:2px 12px;background:var(--bg2);border-top:1px solid var(--border)">
         <span style="font-size:10px;letter-spacing:.08em;color:var(--text-dim);text-transform:uppercase">Pinned NPCs</span>
       </td></tr>`;
-      const divRow = rest.length ? `<tr><td colspan="2" style="padding:0;border-top:1px solid var(--border)"></td></tr>` : '';
+      const divRow = rest.length ? `<tr><td colspan="2" style="padding:0;height:6px;background:var(--bg2);border-top:2px solid var(--border);border-bottom:none"></td></tr>` : '';
       return sepRow + pinned.map(n => buildRow(n, charList, isAll)).join('') + divRow + rest.map(n => buildRow(n, charList, isAll)).join('');
     }
     return npcs.map(n => buildRow(n, charList, isAll)).join('');
