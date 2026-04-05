@@ -554,7 +554,7 @@ let db = null;
 
 function openDB() {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, 4);
+    const req = indexedDB.open(IDB_NAME, 5);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('folder_handle'))    d.createObjectStore('folder_handle');
@@ -562,6 +562,7 @@ function openDB() {
       if (!d.objectStoreNames.contains('wo_completed'))     d.createObjectStore('wo_completed');
       if (!d.objectStoreNames.contains('pinned_skills'))    d.createObjectStore('pinned_skills');
       if (!d.objectStoreNames.contains('player_log_handle')) d.createObjectStore('player_log_handle');
+      if (!d.objectStoreNames.contains('pinned_npcs'))      d.createObjectStore('pinned_npcs');
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
     req.onerror = () => rej();
