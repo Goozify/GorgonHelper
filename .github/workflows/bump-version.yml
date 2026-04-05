@@ -3,6 +3,9 @@ name: Bump Version
 on:
   push:
     branches: [master]
+    paths:
+      - 'GorgonHelper.html'
+      - 'Survey/**'
 
 jobs:
   bump:
