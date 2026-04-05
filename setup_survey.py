@@ -1,15 +1,17 @@
 """
-setup_survey.py — run once to register the gorgon-survey:// URL protocol.
+setup_survey.py — run once to install dependencies and register the
+gorgon-survey:// URL protocol.
 
 After running this, any browser on this machine can launch Survey/main.pyw
 by clicking "Start Survey Helper" in the Gorgon Helper — no HTTP server required.
 
 Usage:
-    py setup_survey.py          # register
+    py setup_survey.py          # install deps + register
     py setup_survey.py remove   # unregister
 """
 
 import os
+import subprocess
 import sys
 import winreg
 
@@ -20,7 +22,24 @@ REG_ROOT   = winreg.HKEY_CURRENT_USER
 REG_PATH   = rf"Software\Classes\{PROTOCOL}"
 
 
+def install_requirements() -> None:
+    req = os.path.join(os.path.dirname(__file__), "Survey", "requirements.txt")
+    if not os.path.exists(req):
+        print(f"WARNING: {req} not found — skipping pip install.")
+        return
+    print("Installing Survey dependencies…")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-r", req],
+        check=False,
+    )
+    if result.returncode != 0:
+        sys.exit("ERROR: pip install failed. Fix the errors above and try again.")
+    print("Dependencies installed.\n")
+
+
 def register() -> None:
+    install_requirements()
+
     if not os.path.exists(SCRIPT):
         sys.exit(f"ERROR: {SCRIPT} not found.")
     if not os.path.exists(PYTHONW):
