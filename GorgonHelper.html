@@ -2393,12 +2393,12 @@ function clearFavorSearch() { favorSearchQ = ''; renderFavorsTab(); }
 function toggleFavorNpc(key) {
   if (expandedFavorNpcs.has(key)) expandedFavorNpcs.delete(key);
   else expandedFavorNpcs.add(key);
-  // Partial re-render — just rebuild tbody to avoid losing search focus
-  const tbody = document.getElementById('favorTbody');
-  if (tbody) {
+  // Partial re-render — just rebuild the table wrap to avoid losing search focus
+  const wrap = document.getElementById('favorTbodyWrap');
+  if (wrap) {
     const showAll = activeCharId === '__all__';
     const chars = showAll ? characters : characters.filter(c => c.id === activeCharId);
-    tbody.innerHTML = _lastFavorRows ? _lastFavorRows(chars, showAll) : '';
+    wrap.innerHTML = _lastFavorRows ? _lastFavorRows(chars, showAll) : '';
   }
 }
 let _lastFavorRows = null; // stored builder fn for partial re-renders
@@ -3107,31 +3107,33 @@ function renderFavorsTab() {
     </tr>${detailRow}`;
   };
 
-  const buildRows = (charList, isAll) => {
+  const thead = `<thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>`;
+  const makeTable = (rowsHtml) => `<table class="favor-table">${thead}<tbody>${rowsHtml}</tbody></table>`;
+
+  const buildContent = (charList, isAll) => {
     if (!isAll && pinnedNpcs.size > 0) {
       const pinned = npcs.filter(n => pinnedNpcs.has(n.key));
       const rest   = npcs.filter(n => !pinnedNpcs.has(n.key));
-      const sepRow = `<tr><td colspan="2" style="padding:2px 12px;background:var(--bg2);border-top:1px solid var(--border)">
-        <span style="font-size:10px;letter-spacing:.08em;color:var(--text-dim);text-transform:uppercase">Pinned NPCs</span>
-      </td></tr>`;
-      const divRow = rest.length ? `<tr><td colspan="2" style="padding:0;height:6px;background:var(--bg2);border-top:2px solid var(--border);border-bottom:none"></td></tr>` : '';
-      return sepRow + pinned.map(n => buildRow(n, charList, isAll)).join('') + divRow + rest.map(n => buildRow(n, charList, isAll)).join('');
+      const pinnedSection = `<div class="panel-label" style="margin-bottom:6px">Pinned NPCs</div>
+        ${makeTable(pinned.map(n => buildRow(n, charList, isAll)).join(''))}`;
+      const restSection = rest.length
+        ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px">NPCs</div>
+          ${makeTable(rest.map(n => buildRow(n, charList, isAll)).join(''))}`
+        : '';
+      return pinnedSection + restSection;
     }
-    return npcs.map(n => buildRow(n, charList, isAll)).join('');
+    return makeTable(npcs.map(n => buildRow(n, charList, isAll)).join(''));
   };
 
-  _lastFavorRows = buildRows;
-  const rows = buildRows(chars, showAll);
+  _lastFavorRows = buildContent;
+  const content = buildContent(chars, showAll);
 
   // If shell already exists (user is typing in search), only update the body parts
   const existingTbodyWrap = document.getElementById('favorTbodyWrap');
   if (existingTbodyWrap) {
     existingTbodyWrap.innerHTML = npcs.length === 0
       ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
-      : `<table class="favor-table">
-          <thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>
-          <tbody id="favorTbody">${rows}</tbody>
-        </table>`;
+      : content;
     const countEl = document.getElementById('favorCount');
     if (countEl) countEl.textContent = npcs.length;
     const clearBtn = document.getElementById('favorClearBtn');
@@ -3160,13 +3162,7 @@ function renderFavorsTab() {
     </div>
     ${npcs.length === 0
       ? `<div id="favorTbodyWrap"><div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div></div>`
-      : `<div id="favorTbodyWrap"><table class="favor-table">
-          <thead><tr>
-            <th>NPC</th>
-            ${showAll ? charHeaders : '<th>Favor</th>'}
-          </tr></thead>
-          <tbody id="favorTbody">${rows}</tbody>
-        </table></div>`}
+      : `<div id="favorTbodyWrap">${content}</div>`}
   </div>`;
 }
 
