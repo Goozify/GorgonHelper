@@ -3320,10 +3320,12 @@ function renderFavorsTab() {
     if (!isAll && pinnedNpcs.size > 0) {
       const pinned = npcs.filter(n => pinnedNpcs.has(n.key));
       const rest   = npcs.filter(n => !pinnedNpcs.has(n.key));
-      const pinnedSection = `<div class="panel-label" style="margin-bottom:6px">Pinned NPCs</div>
-        ${makeTable(pinned.map(n => buildRow(n, charList, isAll)).join(''))}`;
+      const pinnedSection = pinned.length
+        ? `<div class="panel-label" style="margin-bottom:6px">Pinned NPCs</div>
+          ${makeTable(pinned.map(n => buildRow(n, charList, isAll)).join(''))}`
+        : '';
       const restSection = rest.length
-        ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px">NPCs</div>
+        ? `${pinned.length ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px">NPCs</div>` : ''}
           ${makeTable(rest.map(n => buildRow(n, charList, isAll)).join(''))}`
         : '';
       return pinnedSection + restSection;
