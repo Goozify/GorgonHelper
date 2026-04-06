@@ -8,7 +8,8 @@ Tracks your storage vaults, work orders, recipes, favors, quests, and more — a
 ## Requirements
 
 - **Python 3.8+** — to run the local server ([download](https://www.python.org/downloads/))
-- **Chrome or Edge** — required for the File System Access API (live folder watching)
+- **Chrome or Edge** — recommended (native folder watching via File System Access API)
+- **Firefox** — supported via the WebSocket bridge (see [Firefox setup](#firefox-setup-websocket-bridge) below)
 
 ---
 
@@ -81,6 +82,46 @@ Still in **Settings**, under **Game Data Files**, click **Sync All** to download
 > This only needs to be done once, and again after game updates.
 
 You can also download item icons in **Settings** → **Icons** → click **Download All Icons**. This grabs icon images from the CDN and saves them to an `icons/` folder inside your watched folder. Icons are optional but improve the display in several tabs.
+
+---
+
+## Firefox setup (WebSocket bridge)
+
+Chrome and Edge support the **File System Access API** which lets the tool watch your folders directly in the browser. Firefox does not support this API, but you can get the same functionality by running a small local bridge server.
+
+### 1. Install dependencies
+
+Open a terminal in the repository root and run:
+
+```
+pip install -r requirements.txt
+```
+
+### 2. Register the bridge launcher (one time)
+
+```
+py setup_survey.py
+```
+
+This registers the `gorgon-bridge://` custom URL protocol so the **▶ Start Bridge** button inside the app can launch the bridge automatically. To undo: `py setup_survey.py remove`
+
+### 3. Start the bridge
+
+Click **▶ Start Bridge** in **Settings → WebSocket Bridge**, or run manually:
+
+```
+py ws_bridge.py
+```
+
+A console window opens showing connection status. Leave it running while you use the tool.
+
+### 4. Open in Firefox
+
+Navigate to **http://localhost:3000/GorgonHelper.html** in Firefox.
+
+The tool connects to the bridge automatically on page load and reconnects every 10 seconds if the bridge is restarted. You will see **● Connected** in **Settings → WebSocket Bridge** when it is working.
+
+> The bridge auto-detects your `Reports` folder and `Player.log` — no folder picker needed.
 
 ---
 
