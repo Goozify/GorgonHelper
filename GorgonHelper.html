@@ -557,12 +557,14 @@ function _wsConnect() {
       wsBridgeConnected = true;
       _wsBridgePendingChars = new Map();
       if (_wsBridgeReconnectTimer) { clearTimeout(_wsBridgeReconnectTimer); _wsBridgeReconnectTimer = null; }
+      updateHeaderChar();
       renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
     };
     wsBridge.onmessage = e => { try { _wsHandleMsg(JSON.parse(e.data)); } catch(_) {} };
     wsBridge.onclose = () => {
       wsBridgeConnected = false;
+      updateHeaderChar();
       renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
       _wsBridgeReconnectTimer = setTimeout(_wsConnect, 10_000);
@@ -1477,7 +1479,6 @@ function renderCharTabs() {
   el.innerHTML = characters.map(c => `
     <div class="char-tab ${c.id===activeCharId?'active':''}" onclick="setActiveChar('${c.id}')">
       ${c.charData.Character}
-      ${!playerLogWatchActive && !wsBridgeConnected ? `<span class="log-warn" title="Player log not connected — favor data may be stale">!</span>` : ''}
       <span style="font-size:10px;color:var(--text-dim)">${c.charData.ServerName}</span>
       <span class="badge">${c.items.length}</span>
       ${characters.length>1?`<span onclick="removeChar('${c.id}',event)" style="margin-left:1px;color:var(--text-dim);font-size:11px;opacity:.5" title="Remove">✕</span>`:''}
@@ -1816,8 +1817,17 @@ function toggleNavMenu() { document.getElementById('main-nav')?.classList.toggle
 function updateHeaderChar() {
   const el = document.getElementById('headerChar');
   if (!el) return;
-  if (currentLogChar) { el.textContent = currentLogChar; el.style.display = ''; }
-  else { el.style.display = 'none'; }
+  const logOk = playerLogWatchActive || wsBridgeConnected;
+  const warn = !logOk ? `<span class="log-warn" title="Player log not connected — favor data may be stale" style="margin-left:4px">!</span>` : '';
+  if (currentLogChar) {
+    el.innerHTML = currentLogChar + warn;
+    el.style.display = '';
+  } else if (!logOk) {
+    el.innerHTML = warn;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2949,6 +2959,7 @@ async function watchPlayerLog() {
 function stopPlayerLogWatch() {
   if (playerLogWatchTimer) { clearInterval(playerLogWatchTimer); playerLogWatchTimer = null; }
   playerLogWatchActive = false;
+  updateHeaderChar();
   renderCharTabs();
   if (mainTab === 'settings') renderSettingsTab();
 }
@@ -2983,6 +2994,7 @@ async function pollPlayerLog() {
   } catch(e) {
     // File moved or permission lost
     playerLogWatchActive = false;
+    updateHeaderChar();
     renderCharTabs();
     if (mainTab === 'settings') renderSettingsTab();
   }
