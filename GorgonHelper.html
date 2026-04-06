@@ -539,7 +539,7 @@ let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipe
 let dataVersions = {}; // key -> version string read from _version field
 
 // ── WebSocket bridge (Firefox / non-FSAPI support) ──────────────────────
-const WS_BRIDGE_PORT = 8765;
+const WS_BRIDGE_PORT = 8766;
 let wsBridge = null;
 let wsBridgeConnected = false;
 let _wsBridgePendingChars = new Map(); // `CharName_Server` → {char, inv}

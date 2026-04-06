@@ -30,7 +30,7 @@ except ImportError:
     )
 
 # ── Configuration ──────────────────────────────────────────────────────────
-PORT          = 8765
+PORT          = 8766
 POLL_INTERVAL = 2.0        # seconds between file-system polls
 
 # ── Path detection ─────────────────────────────────────────────────────────
