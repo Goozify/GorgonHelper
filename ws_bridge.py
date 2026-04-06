@@ -32,7 +32,6 @@ except ImportError:
 # ── Configuration ──────────────────────────────────────────────────────────
 PORT          = 8765
 POLL_INTERVAL = 2.0        # seconds between file-system polls
-LOG_TAIL_INIT = 200_000    # bytes of Player.log to send on first connect
 
 # ── Path detection ─────────────────────────────────────────────────────────
 def _locate_game() -> tuple[Path, Path]:
@@ -99,33 +98,57 @@ def _read_file(path: Path) -> str | None:
         return None
 
 
-def _tail_log(from_pos: int, max_bytes: int | None = None) -> tuple[str, int]:
+def _tail_log(from_pos: int) -> tuple[str, int]:
     """
-    Read new (or last max_bytes) bytes from Player.log.
+    Read new bytes from Player.log starting at from_pos.
     Returns (text_chunk, new_position).
     """
     if not PLAYER_LOG.exists():
         return "", from_pos
     try:
         size = PLAYER_LOG.stat().st_size
-        read_from = from_pos
-        if max_bytes is not None:
-            read_from = max(0, size - max_bytes)
-        if size <= read_from:
+        if size <= from_pos:
             return "", from_pos
         with open(PLAYER_LOG, "rb") as f:
-            f.seek(read_from)
-            raw = f.read(size - read_from)
+            f.seek(from_pos)
+            raw = f.read(size - from_pos)
         text = raw.decode("utf-8", errors="replace")
         # Only process up to the last complete newline
         last_nl = text.rfind("\n")
         if last_nl < 0:
             return "", from_pos
         chunk = text[: last_nl + 1]
-        new_pos = read_from + len(chunk.encode("utf-8"))
+        new_pos = from_pos + len(chunk.encode("utf-8"))
         return chunk, new_pos
     except Exception:
         return "", from_pos
+
+
+def _find_session_start() -> int:
+    """
+    Return the byte offset of the last ProcessAddPlayer line in Player.log.
+    This is where the current game session began, so currentLogChar can be
+    established on the client even if the login happened hours ago.
+    Scans the last 10 MB; falls back to 0 if not found.
+    """
+    if not PLAYER_LOG.exists():
+        return 0
+    try:
+        size = PLAYER_LOG.stat().st_size
+        scan_from = max(0, size - 10 * 1024 * 1024)
+        with open(PLAYER_LOG, "rb") as f:
+            f.seek(scan_from)
+            raw = f.read()
+        text = raw.decode("utf-8", errors="replace")
+        idx = text.rfind("ProcessAddPlayer(")
+        if idx < 0:
+            return scan_from  # no login event found in last 10 MB — start here anyway
+        # Walk back to the start of that line
+        line_start = text.rfind("\n", 0, idx)
+        line_start = line_start + 1 if line_start >= 0 else 0
+        return scan_from + len(text[:line_start].encode("utf-8"))
+    except Exception:
+        return 0
 
 
 # ── WebSocket handler ──────────────────────────────────────────────────────
@@ -151,8 +174,11 @@ async def _handler(ws) -> None:
             if content is not None:
                 await ws.send(json.dumps({"type": "file", "path": bpath, "content": content}))
 
-        # 3. Initial player-log tail (last LOG_TAIL_INIT bytes so NPC data is fresh)
-        chunk, _ = _tail_log(0, max_bytes=LOG_TAIL_INIT)
+        # 3. Initial player-log send — from the last ProcessAddPlayer line so the
+        #    client always receives the login event and can detect the current character,
+        #    regardless of how long ago the session started.
+        session_start = _find_session_start()
+        chunk, _ = _tail_log(session_start)
         if chunk:
             lines = [l for l in chunk.splitlines() if l]
             if lines:
