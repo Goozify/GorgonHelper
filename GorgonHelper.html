@@ -51,6 +51,7 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .char-tab.add-tab{color:var(--text-dim);font-size:15px;padding:5px 12px;font-family:monospace}
 .char-tab.add-tab:hover{color:var(--gold)}
 .char-tab.all-tab{font-style:italic}
+.char-tab .log-warn{font-size:11px;font-weight:700;color:#e05555;line-height:1;margin-left:-2px}
 
 /* ── Layout ── */
 .layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 130px)}
@@ -275,6 +276,10 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .favor-bar-row{display:flex;align-items:center;gap:7px}
 .favor-pbar-wrap{flex:1;height:6px;background:var(--bg);border-radius:3px;border:1px solid var(--border);overflow:hidden}
 .favor-pbar{height:100%;border-radius:2px}
+.favor-pin-btn{opacity:0;font-size:13px;color:var(--text-dim);cursor:pointer;margin-left:5px;transition:opacity .1s,color .1s;user-select:none;line-height:1}
+.favor-pin-btn:hover{color:var(--gold)}
+.favor-pin-btn.pinned{opacity:1;color:var(--gold)}
+.favor-row:hover .favor-pin-btn{opacity:1}
 .pinned-skill-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,47,63,.4)}
 .pinned-skill-row:last-child{border-bottom:none}
 .pinned-skill-name{flex:1;font-size:13px;color:var(--text-bright);font-weight:600}
@@ -533,6 +538,99 @@ let LANDMARKS = {};       // areaName -> [{name, type, desc, x, z}]
 let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false };
 let dataVersions = {}; // key -> version string read from _version field
 
+// ── WebSocket bridge (Firefox / non-FSAPI support) ──────────────────────
+const WS_BRIDGE_PORT = 8766;
+let wsBridge = null;
+let wsBridgeConnected = false;
+let _wsBridgePendingChars = new Map(); // `CharName_Server` → {char, inv}
+let _wsBridgeReconnectTimer = null;
+
+function initWsBridge() { _wsConnect(); }
+
+function _wsConnect() {
+  if (wsBridge && wsBridge.readyState <= WebSocket.OPEN) return;
+  try {
+    wsBridge = new WebSocket(`ws://localhost:${WS_BRIDGE_PORT}`);
+    wsBridge.onopen = () => {
+      wsBridgeConnected = true;
+      _wsBridgePendingChars = new Map();
+      if (_wsBridgeReconnectTimer) { clearTimeout(_wsBridgeReconnectTimer); _wsBridgeReconnectTimer = null; }
+      renderCharTabs();
+      if (mainTab === 'settings') renderSettingsTab();
+    };
+    wsBridge.onmessage = e => { try { _wsHandleMsg(JSON.parse(e.data)); } catch(_) {} };
+    wsBridge.onclose = () => {
+      wsBridgeConnected = false;
+      renderCharTabs();
+      if (mainTab === 'settings') renderSettingsTab();
+      _wsBridgeReconnectTimer = setTimeout(_wsConnect, 10_000);
+    };
+    wsBridge.onerror = () => {}; // onclose handles retry
+  } catch(_) {}
+}
+
+function _wsHandleMsg(msg) {
+  if (msg.type === 'file') {
+    _wsHandleFile(msg.path, msg.content);
+  } else if (msg.type === 'ready') {
+    _wsFlushChars(true);
+    if (characters.length > 0) renderAll();
+  } else if (msg.type === 'playerlog') {
+    const count = parsePlayerLogLines(msg.lines);
+    if (count > 0 && mainTab === 'favors') renderFavorsTab();
+    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+  }
+}
+
+function _wsHandleFile(path, content) {
+  // Game data from Json/ subfolder — CDN format, needs processCDNData
+  if (path.startsWith('Json/')) {
+    const filename = path.slice(5);
+    const df = DATA_FILES.find(d => d.file === filename);
+    if (df && !dataLoaded[df.key]) {
+      try { applyGameData(df.key, processCDNData(df.key, JSON.parse(content))); } catch(_) {}
+    }
+    return;
+  }
+  // Character / inventory JSON
+  try {
+    const json = JSON.parse(content);
+    if (!json.Character || !json.ServerName || !json.Report) return;
+    const key = `${json.Character}_${json.ServerName}`;
+    if (!_wsBridgePendingChars.has(key)) _wsBridgePendingChars.set(key, {});
+    const entry = _wsBridgePendingChars.get(key);
+    if (json.Report === 'CharacterSheet') entry.char = json;
+    if (json.Report === 'Storage')        entry.inv  = json;
+    // After 'ready', apply individual updates immediately when both halves arrive
+    if (wsBridgeConnected && entry.char && entry.inv) _wsApplyChar(key, entry, false);
+  } catch(_) {}
+}
+
+function _wsApplyChar(key, pair, isInitial) {
+  if (!pair.char || !pair.inv) return false;
+  const id = `${pair.char.Character}_${pair.char.ServerName}`;
+  const existing = characters.findIndex(c => c.id === id);
+  const charObj = { id, charData: pair.char, invData: pair.inv, items: processInventory(pair.inv), topSkills: getTopSkills(pair.char) };
+  invalidateCharItemMap(id);
+  if (existing >= 0) {
+    characters[existing] = charObj;
+    if (!isInitial) showToast(`↑ ${pair.char.Character} updated`);
+  } else {
+    characters.push(charObj);
+    if (!activeCharId) activeCharId = id;
+    if (!isInitial) showToast(`+ ${pair.char.Character} loaded`);
+  }
+  return true;
+}
+
+function _wsFlushChars(isInitial) {
+  let anyChange = false;
+  for (const [key, pair] of _wsBridgePendingChars)
+    if (_wsApplyChar(key, pair, isInitial)) anyChange = true;
+  if (anyChange && !activeCharId && characters.length > 0) activeCharId = characters[0].id;
+  return anyChange;
+}
+
 // ── Player log data ──
 let playerLogData = {};         // charName → { npcs: {npcKey→{currentGold,maxGold,resetAt,favorLevel,loggedAt}}, idMap: {id→npcKey} }
 let currentLogChar = '';        // character name detected from ProcessAddPlayer
@@ -550,7 +648,7 @@ let db = null;
 
 function openDB() {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, 4);
+    const req = indexedDB.open(IDB_NAME, 5);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('folder_handle'))    d.createObjectStore('folder_handle');
@@ -558,6 +656,7 @@ function openDB() {
       if (!d.objectStoreNames.contains('wo_completed'))     d.createObjectStore('wo_completed');
       if (!d.objectStoreNames.contains('pinned_skills'))    d.createObjectStore('pinned_skills');
       if (!d.objectStoreNames.contains('player_log_handle')) d.createObjectStore('player_log_handle');
+      if (!d.objectStoreNames.contains('pinned_npcs'))      d.createObjectStore('pinned_npcs');
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
     req.onerror = () => rej();
@@ -636,6 +735,9 @@ async function deleteWOCompletion(woKey, charId) {
 // Pinned skills per character
 let pinnedSkillsCache = {}; // charId -> Set<skillName>
 
+// Pinned NPCs per character (favors tab)
+let pinnedNpcsCache = {}; // charId -> Set<npcKey>
+
 async function loadPinnedSkills() {
   const keys = await dbGetAllKeys('pinned_skills');
   for (const k of keys) {
@@ -658,6 +760,31 @@ async function togglePinnedSkill(charId, skillName) {
   if (pinnedSkillsCache[charId].has(skillName)) pinnedSkillsCache[charId].delete(skillName);
   else pinnedSkillsCache[charId].add(skillName);
   await savePinnedSkills(charId);
+}
+
+async function loadPinnedNpcs() {
+  const keys = await dbGetAllKeys('pinned_npcs');
+  for (const k of keys) {
+    const val = await dbGet('pinned_npcs', k);
+    if (Array.isArray(val)) pinnedNpcsCache[k] = new Set(val);
+  }
+}
+
+async function savePinnedNpcs(charId) {
+  const arr = [...(pinnedNpcsCache[charId] || [])];
+  await dbPut('pinned_npcs', charId, arr);
+}
+
+function getPinnedNpcs(charId) {
+  return pinnedNpcsCache[charId] || new Set();
+}
+
+async function togglePinnedNpc(charId, npcKey) {
+  if (!pinnedNpcsCache[charId]) pinnedNpcsCache[charId] = new Set();
+  if (pinnedNpcsCache[charId].has(npcKey)) pinnedNpcsCache[charId].delete(npcKey);
+  else pinnedNpcsCache[charId].add(npcKey);
+  await savePinnedNpcs(charId);
+  renderFavorsTab();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1005,18 +1132,47 @@ let _recipeKeyByRef = new Map();   // recipe array ref -> internalName
 let _resultNormToRecipe = null;    // normalized result item name -> recipe (built lazily)
 
 let CRAFTABLE_ITEM_IDS = new Set(); // typeIds that are produced by at least one recipe
+let _recipesByResultId = new Map(); // typeId(str) -> [{recipeKey, recipe, producedQty}]
 
 function buildRecipeCaches() {
   _woResolveCache = {};
   _recipeKeyByRef = new Map();
   _resultNormToRecipe = null; // will be built on first use
   CRAFTABLE_ITEM_IDS = new Set();
+  _recipesByResultId = new Map();
   for (const [k, v] of Object.entries(RECIPES)) {
     _recipeKeyByRef.set(v, k);
-    for (const [rid] of (v[3] || [])) {
-      CRAFTABLE_ITEM_IDS.add(String(rid));
+    for (const [rid, qty] of (v[3] || [])) {
+      const tid = String(rid);
+      CRAFTABLE_ITEM_IDS.add(tid);
+      if (!_recipesByResultId.has(tid)) _recipesByResultId.set(tid, []);
+      _recipesByResultId.get(tid).push({ recipeKey: k, recipe: v, producedQty: qty || 1 });
     }
   }
+}
+
+// Returns true if any char in qChars knows a recipe that produces typeId,
+// AND has enough ingredients to craft the shortfall (needQty - haveQty).
+function canCraftItem(typeId, needQty, haveQty, qChars, showAll) {
+  if (!dataLoaded.recipes) return false;
+  const candidates = _recipesByResultId.get(String(typeId));
+  if (!candidates) return false;
+  const needToCraft = needQty - haveQty;
+  const charsToCheck = showAll ? characters : qChars;
+  for (const { recipeKey, recipe, producedQty } of candidates) {
+    // Must know the recipe
+    if (!charsToCheck.some(c => (c.charData.RecipeCompletions || {})[recipeKey] !== undefined)) continue;
+    // Must have enough ingredients for ceil(needToCraft / producedQty) runs
+    const runs = Math.ceil(needToCraft / producedQty);
+    const hasIngs = (recipe[2] || []).every(([ingId, ingQty]) => {
+      const have = showAll
+        ? getInventoryQtyAllChars(ingId)
+        : getInventoryQtyFast(ingId, getCharItemMap(qChars[0]));
+      return have >= ingQty * runs;
+    });
+    if (hasIngs) return true;
+  }
+  return false;
 }
 
 function getResultNormMap() {
@@ -1317,6 +1473,7 @@ function renderCharTabs() {
   el.innerHTML = characters.map(c => `
     <div class="char-tab ${c.id===activeCharId?'active':''}" onclick="setActiveChar('${c.id}')">
       ${c.charData.Character}
+      ${!playerLogWatchActive && !wsBridgeConnected ? `<span class="log-warn" title="Player log not connected — favor data may be stale">!</span>` : ''}
       <span style="font-size:10px;color:var(--text-dim)">${c.charData.ServerName}</span>
       <span class="badge">${c.items.length}</span>
       ${characters.length>1?`<span onclick="removeChar('${c.id}',event)" style="margin-left:1px;color:var(--text-dim);font-size:11px;opacity:.5" title="Remove">✕</span>`:''}
@@ -1327,7 +1484,7 @@ function renderCharTabs() {
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
 }
 
-function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; completedWOSearch = ''; renderAll(); }
+function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; questCompleteFilter = ''; completedWOSearch = ''; renderAll(); }
 function removeChar(id, e) {
   e.stopPropagation();
   if (characters.length===1) { showToast("Can't remove last character"); return; }
@@ -2360,12 +2517,12 @@ function clearFavorSearch() { favorSearchQ = ''; renderFavorsTab(); }
 function toggleFavorNpc(key) {
   if (expandedFavorNpcs.has(key)) expandedFavorNpcs.delete(key);
   else expandedFavorNpcs.add(key);
-  // Partial re-render — just rebuild tbody to avoid losing search focus
-  const tbody = document.getElementById('favorTbody');
-  if (tbody) {
+  // Partial re-render — just rebuild the table wrap to avoid losing search focus
+  const wrap = document.getElementById('favorTbodyWrap');
+  if (wrap) {
     const showAll = activeCharId === '__all__';
     const chars = showAll ? characters : characters.filter(c => c.id === activeCharId);
-    tbody.innerHTML = _lastFavorRows ? _lastFavorRows(chars, showAll) : '';
+    wrap.innerHTML = _lastFavorRows ? _lastFavorRows(chars, showAll) : '';
   }
 }
 let _lastFavorRows = null; // stored builder fn for partial re-renders
@@ -2759,6 +2916,7 @@ async function watchPlayerLog() {
     playerLogWatchActive = true;
     await dbPut('player_log_handle', 'handle', handle);
     startPlayerLogWatcher();
+    renderCharTabs();
     if (mainTab === 'settings') renderSettingsTab();
   } catch(e) { /* user cancelled */ }
 }
@@ -2766,6 +2924,7 @@ async function watchPlayerLog() {
 function stopPlayerLogWatch() {
   if (playerLogWatchTimer) { clearInterval(playerLogWatchTimer); playerLogWatchTimer = null; }
   playerLogWatchActive = false;
+  renderCharTabs();
   if (mainTab === 'settings') renderSettingsTab();
 }
 
@@ -2799,6 +2958,7 @@ async function pollPlayerLog() {
   } catch(e) {
     // File moved or permission lost
     playerLogWatchActive = false;
+    renderCharTabs();
     if (mainTab === 'settings') renderSettingsTab();
   }
 }
@@ -2834,6 +2994,7 @@ async function resumePlayerLog() {
       playerLogWatchActive = true;
       await dbPut('player_log_handle', 'handle', handle);
       startPlayerLogWatcher();
+      renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
     }
   } catch(e) {}
@@ -3023,7 +3184,9 @@ function renderFavorsTab() {
   const charHeaders = showAll ? '<th>Favor by Character</th>' : '';
 
   // Table rows builder (stored for partial re-renders on toggle)
-  const buildRows = (charList, isAll) => npcs.map(npc => {
+  const pinnedNpcs = showAll ? new Set() : getPinnedNpcs(activeCharId);
+
+  const buildRow = (npc, charList, isAll) => {
     const favorCell = isAll
       ? `<td class="favor-bar-cell">${charList.map(c => {
           const favor = npc.chars[c.id];
@@ -3056,30 +3219,49 @@ function renderFavorsTab() {
 
     const logOnlyBadge = npc.logOnly ? `<span style="font-size:9px;color:var(--text-dim);margin-left:5px;border:1px solid var(--border);border-radius:3px;padding:0 3px">vendor</span>` : '';
 
+    const isPinned = pinnedNpcs.has(npc.key);
+    const pinBtn = !isAll ? `<span class="favor-pin-btn${isPinned?' pinned':''}" title="${isPinned?'Unpin':'Pin'} NPC"
+      onclick="event.stopPropagation();togglePinnedNpc('${activeCharId}','${safeKey}')">${isPinned?'★':'☆'}</span>` : '';
+
     return `<tr class="favor-row" style="${hasExpand ? 'cursor:pointer' : ''}"
       onclick="${hasExpand ? `toggleFavorNpc('${safeKey}')` : ''}"
       onmouseenter="showNpcPrefTooltip('${safeKey}', event)"
       onmouseleave="hideNpcPrefTooltip()">
       <td>
-        <div class="favor-npc-name">${npc.name}${logOnlyBadge}${toggleIcon}</div>
+        <div class="favor-npc-name">${npc.name}${logOnlyBadge}${toggleIcon}${pinBtn}</div>
         ${npc.area ? `<div class="favor-npc-area">${npc.area}</div>` : ''}
       </td>
       ${favorCell}
     </tr>${detailRow}`;
-  }).join('');
+  };
 
-  _lastFavorRows = buildRows;
-  const rows = buildRows(chars, showAll);
+  const thead = `<thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>`;
+  const makeTable = (rowsHtml) => `<table class="favor-table">${thead}<tbody>${rowsHtml}</tbody></table>`;
+
+  const buildContent = (charList, isAll) => {
+    if (!isAll && pinnedNpcs.size > 0) {
+      const pinned = npcs.filter(n => pinnedNpcs.has(n.key));
+      const rest   = npcs.filter(n => !pinnedNpcs.has(n.key));
+      const pinnedSection = `<div class="panel-label" style="margin-bottom:6px">Pinned NPCs</div>
+        ${makeTable(pinned.map(n => buildRow(n, charList, isAll)).join(''))}`;
+      const restSection = rest.length
+        ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px">NPCs</div>
+          ${makeTable(rest.map(n => buildRow(n, charList, isAll)).join(''))}`
+        : '';
+      return pinnedSection + restSection;
+    }
+    return makeTable(npcs.map(n => buildRow(n, charList, isAll)).join(''));
+  };
+
+  _lastFavorRows = buildContent;
+  const content = buildContent(chars, showAll);
 
   // If shell already exists (user is typing in search), only update the body parts
   const existingTbodyWrap = document.getElementById('favorTbodyWrap');
   if (existingTbodyWrap) {
     existingTbodyWrap.innerHTML = npcs.length === 0
       ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
-      : `<table class="favor-table">
-          <thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>
-          <tbody id="favorTbody">${rows}</tbody>
-        </table>`;
+      : content;
     const countEl = document.getElementById('favorCount');
     if (countEl) countEl.textContent = npcs.length;
     const clearBtn = document.getElementById('favorClearBtn');
@@ -3108,28 +3290,34 @@ function renderFavorsTab() {
     </div>
     ${npcs.length === 0
       ? `<div id="favorTbodyWrap"><div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div></div>`
-      : `<div id="favorTbodyWrap"><table class="favor-table">
-          <thead><tr>
-            <th>NPC</th>
-            ${showAll ? charHeaders : '<th>Favor</th>'}
-          </tr></thead>
-          <tbody id="favorTbody">${rows}</tbody>
-        </table></div>`}
+      : `<div id="favorTbodyWrap">${content}</div>`}
   </div>`;
 }
 
+function favorTierFromExact(exactFavor) {
+  // Walk tiers best→worst and return the first whose floor is <= exactFavor
+  for (let i = FAVOR_TIER_ORDER.length - 1; i >= 0; i--) {
+    const tier = FAVOR_TIER_ORDER[i];
+    if (FAVOR_TIER_FLOORS[tier] != null && exactFavor >= FAVOR_TIER_FLOORS[tier]) return tier;
+  }
+  return 'Neutral';
+}
+
 function renderFavorCell(favor, exactFavor) {
-  const fc = FAVOR_COLORS[favor] || FAVOR_COLORS.Neutral;
-  const displayName = favor.replace(/([A-Z])/g,' $1').trim();
+  // If we have a live exact value, derive the true tier from it — the
+  // character-export tier can be stale if favor was gained without re-exporting.
+  const resolvedFavor = exactFavor != null ? favorTierFromExact(exactFavor) : favor;
+  const fc = FAVOR_COLORS[resolvedFavor] || FAVOR_COLORS.Neutral;
+  const displayName = resolvedFavor.replace(/([A-Z])/g,' $1').trim();
   let pct, subHtml = '';
-  if (exactFavor != null && FAVOR_TIER_FLOORS[favor] != null && FAVOR_TIER_CAPS[favor] != null) {
-    const floor = FAVOR_TIER_FLOORS[favor];
-    const cap = FAVOR_TIER_CAPS[favor];
+  if (exactFavor != null && FAVOR_TIER_FLOORS[resolvedFavor] != null && FAVOR_TIER_CAPS[resolvedFavor] != null) {
+    const floor = FAVOR_TIER_FLOORS[resolvedFavor];
+    const cap = FAVOR_TIER_CAPS[resolvedFavor];
     const withinTier = exactFavor - floor;
     pct = Math.min(100, (withinTier / cap) * 100);
     subHtml = `<div style="font-size:10px;color:var(--text-dim);margin-top:2px">${Math.round(withinTier)} / ${cap}</div>`;
   } else {
-    pct = FAVOR_PCT[favor] ?? 0;
+    pct = FAVOR_PCT[resolvedFavor] ?? 0;
   }
   return `<div>
     <div class="favor-bar-row">
@@ -4442,6 +4630,7 @@ function renderVaultsTab() {
 // ═══════════════════════════════════════════════════════════
 let questLocationFilter = '';
 let questSearchQ = '';
+let questCompleteFilter = ''; // '' | 'ready' | 'crafts'
 
 function setQuestLocationFilter(loc) {
   questLocationFilter = questLocationFilter === loc ? '' : loc;
@@ -4456,7 +4645,8 @@ function onQuestSearch(v) {
   }, 10);
 }
 function clearQuestSearch() { questSearchQ = ''; renderQuestsTab(); }
-function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; setMainTab('quests'); }
+function setQuestCompleteFilter(v) { questCompleteFilter = questCompleteFilter === v ? '' : v; renderQuestsTab(); }
+function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; questCompleteFilter = ''; setMainTab('quests'); }
 
 function goToRecipe(itemName) {
   recipeSearchQ = itemName;
@@ -4505,11 +4695,29 @@ function renderQuestsTab() {
   }
   const sortedLocs = [...locSet.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
+  // Completability helpers — only considers item objectives (tid)
+  const getHave = (tid, qChars) => showAll ? getInventoryQtyAllChars(tid) : getInventoryQtyFast(tid, getCharItemMap(qChars[0]));
+  const isReady = ({ quest, chars: qChars }) => {
+    const itemObjs = quest.objs.filter(o => o.tid);
+    if (itemObjs.length === 0) return false; // can't verify non-item objectives
+    return itemObjs.every(o => getHave(o.tid, qChars) >= o.n);
+  };
+  const isReadyWithCrafts = ({ quest, chars: qChars }) => {
+    const itemObjs = quest.objs.filter(o => o.tid);
+    if (itemObjs.length === 0) return false;
+    return itemObjs.every(o => {
+      const have = getHave(o.tid, qChars);
+      return have >= o.n || canCraftItem(o.tid, o.n, have, qChars, showAll);
+    });
+  };
+
   // Apply filters
   const q = questSearchQ.toLowerCase();
   let filtered = questEntries;
   if (questLocationFilter) filtered = filtered.filter(e => (e.quest.loc || 'Unknown') === questLocationFilter);
   if (q) filtered = filtered.filter(e => e.quest.name.toLowerCase().includes(q) || (e.quest.npcName||'').toLowerCase().includes(q));
+  if (questCompleteFilter === 'ready')  filtered = filtered.filter(isReady);
+  if (questCompleteFilter === 'crafts') filtered = filtered.filter(isReadyWithCrafts);
 
   // Sort: quests with items first, then alphabetical
   filtered.sort((a, b) => {
@@ -4631,6 +4839,11 @@ function renderQuestsTab() {
         <span class="search-icon">⌕</span>
       </div>
       <span style="font-size:12px;color:var(--text-dim)"><span style="color:var(--gold)">${filtered.length}</span> active quests</span>
+    </div>
+    <div class="filter-row" style="margin-bottom:8px">
+      <span class="filter-chip ${!questCompleteFilter?'active':''}" onclick="setQuestCompleteFilter('')">All</span>
+      <span class="filter-chip ${questCompleteFilter==='ready'?'active':''}" onclick="setQuestCompleteFilter('ready')" title="Quests where all item objectives are in your inventory">✓ Completeable</span>
+      <span class="filter-chip ${questCompleteFilter==='crafts'?'active':''}" onclick="setQuestCompleteFilter('crafts')" title="Completeable items, plus items you can craft">Craftable</span>
     </div>
     <div class="filter-row" style="margin-bottom:14px">
       <span class="filter-chip ${!questLocationFilter?'active':''}" onclick="setQuestLocationFilter('')">All Locations</span>
@@ -4891,6 +5104,9 @@ function renderSettingsTab() {
         ${folderHandle
           ? `<div class="settings-label">📁 ${folderHandle.name}</div>
              <div class="settings-meta" id="settingsFolderMeta">Auto-refreshing every ${POLL_INTERVAL/1000}s</div>`
+          : wsBridgeConnected
+          ? `<div class="settings-label" style="color:#7ab880">● Bridge watching Reports folder</div>
+             <div class="settings-meta">Auto-detected from %APPDATA% · Use Select Folder to override with a different location</div>`
           : `<div class="settings-meta">Select the Reports folder to enable automatic character file loading.</div>`
         }
       </div>
@@ -4914,6 +5130,9 @@ function renderSettingsTab() {
                ${currentLogChar ? ` · Player: <strong style="color:var(--text)">${currentLogChar}</strong>` : ''}
                ${playerLogLastUpdate ? ` · Updated ${Math.round((Date.now()-playerLogLastUpdate)/60000)}m ago` : ''}
              </div>`
+          : wsBridgeConnected
+          ? `<div class="settings-label" style="color:#7ab880">● Bridge watching Player.log</div>
+             <div class="settings-meta">Auto-detected from %APPDATA%${currentLogChar ? ` · Player: <strong style="color:var(--text)">${currentLogChar}</strong>` : ''} · Use Watch below to override with a different file</div>`
           : playerLogPendingHandle
           ? `<div class="settings-label" style="color:var(--gold-dim)">⚠ player.log (click to resume)</div>
              <div class="settings-meta">${playerLogPendingHandle.name} · Permission needed after page reload</div>`
@@ -4941,6 +5160,28 @@ function renderSettingsTab() {
         <button class="sync-btn danger" onclick="clearPlayerLogData()">✕ Clear all data</button>
       </div>`;
     })()}
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+    <div class="settings-title">🔌 WebSocket Bridge</div>
+    <div class="settings-meta" style="margin-bottom:10px;line-height:1.7">
+      Enables automatic folder watching and live player log in Firefox and other browsers that
+      lack the File System Access API. Run <code style="color:var(--gold)">python ws_bridge.py</code> in the
+      Reports folder (or click <strong>Start Bridge</strong> after running <code style="color:var(--gold)">setup_survey.py</code>).
+    </div>
+    <div class="settings-row">
+      <div>
+        ${wsBridgeConnected
+          ? `<div class="settings-label" style="color:#7ab880">● Connected on port ${WS_BRIDGE_PORT}</div>
+             <div class="settings-meta">File changes and player.log stream automatically</div>`
+          : `<div class="settings-label" style="color:var(--text-dim)">○ Not connected</div>
+             <div class="settings-meta">Bridge not running — connect on port ${WS_BRIDGE_PORT}, retrying every 10s</div>`
+        }
+      </div>
+      ${!wsBridgeConnected
+        ? `<a href="gorgon-bridge://start" class="sync-btn" style="text-decoration:none;display:inline-flex;align-items:center">▶ Start Bridge</a>`
+        : ''}
+    </div>
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
@@ -6278,12 +6519,9 @@ function renderSurveyTab(targetEl) {
     <strong style="color:var(--text)">HTTP file server</strong> (port 3000) — no need to run
     <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">start_server.py</code> separately.
     To stop everything, use the <strong style="color:var(--text)">⏹ Stop Server</strong> button in Survey → ⚙ Settings.<br><br>
-    <strong style="color:var(--text)">First-time setup:</strong> install the required Python packages, then register the launcher.<br>
-    Open a terminal in the <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Survey/</code> folder and run:<br><br>
-    <code style="background:var(--bg3);padding:2px 8px;border-radius:3px;color:var(--gold)">pip install -r requirements.txt</code><br><br>
-    Then register the <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> URL protocol (needed for the ▶ button above):<br><br>
+    <strong style="color:var(--text)">First-time setup:</strong> run <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">setup_survey.py</code> once from the root folder.
+    It installs the required Python packages and registers the <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">gorgon-survey://</code> URL protocol so the ▶ button above works.<br><br>
     <code style="background:var(--bg3);padding:2px 8px;border-radius:3px;color:var(--gold)">py setup_survey.py</code><br><br>
-    This writes to <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">HKCU\Software\Classes\gorgon-survey</code> — no admin rights required.
     To undo: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">py setup_survey.py remove</code>
   </div>
   <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
@@ -6720,8 +6958,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadWOLimits();
   await loadWOCompleted();
   await loadPinnedSkills();
+  await loadPinnedNpcs();
   loadPlayerLogData();
   await resumePlayerLogWatch();
+  initWsBridge();
 
   // Restore survey tab visibility preference
   if (localStorage.getItem('showSurveyTab') === '1') setSurveyTabVisible(true, false);
