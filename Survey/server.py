@@ -183,6 +183,7 @@ class SurveyServer:
         self._route_mapped: List[int] = []
         self._current_slot_labels: dict = {}
         self._pending_visit_loc: Optional[SurveyLocation] = None
+        self._pending_visit_start_time: Optional[float] = None  # time.monotonic() when pending was set
         self._pending_timeout_handle = None
         # After a pending times out we keep the loc here briefly so that late
         # chat-log confirmations (arriving a few seconds after the timeout) can
@@ -570,6 +571,7 @@ class SurveyServer:
         self._session_start_time = None
         self._session_loot = {}
         self._loot_buffer = []
+        self._pending_visit_start_time = None
 
         await self._calculate_route()
         self.map_overlay.update()
@@ -607,6 +609,7 @@ class SurveyServer:
                 log.debug("DETECTED  coord match → #%d %r  dist=%.1f  abs=(%+d E, %+d S)",
                           best_loc.id, best_loc.item_name, best_dist, east_abs, south_abs)
                 self._pending_visit_loc = best_loc
+                self._pending_visit_start_time = time.monotonic()
                 self._reset_pending_timeout()
             else:
                 log.debug("DETECTED  no coord match  abs=(%+d E, %+d S)  best_dist=%.1f",
@@ -710,8 +713,9 @@ class SurveyServer:
             return  # only track during route mode
         now = time.monotonic()
         self._loot_buffer.append((now, item_name, qty))
-        # Prune entries older than 10 seconds to keep the buffer small
-        self._loot_buffer = [(t, n, q) for t, n, q in self._loot_buffer if now - t < 10.0]
+        # Prune entries older than 5 seconds — drain window is ≤2 s so this
+        # is just a safety margin to keep the buffer from growing unbounded.
+        self._loot_buffer = [(t, n, q) for t, n, q in self._loot_buffer if now - t < 5.0]
 
     async def _on_area_detected(self, area: str):
         self.config.active_area = area
@@ -748,6 +752,7 @@ class SurveyServer:
             if loc and not loc.visited and loc.inventory_slot == slot_index:
                 log.debug("CLICK     slot=%d → #%d %r", slot_index, loc.id, loc.item_name)
                 self._pending_visit_loc = loc
+                self._pending_visit_start_time = time.monotonic()
                 label = self._current_slot_labels.get(slot_index, "?")
                 self._reset_pending_timeout()
                 await self.broadcast({
@@ -804,12 +809,18 @@ class SurveyServer:
 
         # Drain loot buffer: survey loot arrives as "X added to inventory." lines
         # that appear at the SAME moment as (or just before) the "X collected!"
-        # summary that triggered this call.  Grab everything buffered in the
-        # last 5 seconds — that window safely captures the current survey's
-        # drops while excluding items picked up between the previous survey
-        # and the one before that.
+        # summary that triggered this call.  Two-pronged filter:
+        #  1. Backward window of 2 s — survey rewards all land in a tight burst
+        #     so anything older is unrelated ambient loot (herbs auto-gathered
+        #     while walking, etc.).
+        #  2. Forward floor at _pending_visit_start_time — excludes anything
+        #     that arrived before this survey map was even activated, ruling out
+        #     loot from the tail of the previous node or inventory pickups that
+        #     happened to precede this survey use.
         now = time.monotonic()
-        cutoff = now - 5.0
+        start = self._pending_visit_start_time if self._pending_visit_start_time is not None else now - 2.0
+        cutoff = max(now - 2.0, start)
+        self._pending_visit_start_time = None
         consumed, remaining = [], []
         for entry in self._loot_buffer:
             (consumed if entry[0] >= cutoff else remaining).append(entry)
