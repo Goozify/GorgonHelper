@@ -1425,6 +1425,7 @@ function setMainTab(tab) {
   if (tab !== 'tools' || toolsSubTab !== 'gardening') stopGardenRefresh();
   else startGardenRefresh();
   if (tab === 'tools' && toolsSubTab === 'survey') surveyConnect();
+  else window.removeEventListener('resize', surveySizeContainer);
   clearExpandedSources();
   expandedAvailWOs.clear();
   expandedWOs.clear();
@@ -6199,6 +6200,7 @@ function stopGardenRefresh() {
 function setToolsSubTab(tab) {
   toolsSubTab = tab;
   if (tab === 'survey') surveyConnect();
+  else window.removeEventListener('resize', surveySizeContainer);
   if (tab === 'gardening') { pruneWitheredPlots(); startGardenRefresh(); } else stopGardenRefresh();
   renderToolsTab();
 }
@@ -6677,7 +6679,7 @@ function renderSurveyTab(targetEl) {
   }
 
   el.innerHTML = `
-<div style="display:flex;flex-direction:column;height:calc(100vh - 100px)">
+<div id="surveyOuter" style="display:flex;flex-direction:column;overflow:hidden">
 
   <!-- Toolbar -->
   <div style="display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">
@@ -6814,8 +6816,9 @@ function renderSurveyTab(targetEl) {
 </div>`;
 
   surveyRenderList();
-  // Size canvas to its container then draw
+  // Size outer container to fill available viewport, then size canvas and draw
   requestAnimationFrame(() => {
+    surveySizeContainer();
     const canvas = document.getElementById('surveyCanvas');
     if (canvas) {
       canvas.width = canvas.offsetWidth;
@@ -6823,6 +6826,16 @@ function renderSurveyTab(targetEl) {
       surveyDrawCanvas();
     }
   });
+  window.addEventListener('resize', surveySizeContainer);
+}
+
+// ── Survey container sizing ───────────────────────────────
+
+function surveySizeContainer() {
+  const outer = document.getElementById('surveyOuter');
+  if (!outer) return;
+  const top = outer.getBoundingClientRect().top;
+  outer.style.height = Math.max(200, window.innerHeight - top) + 'px';
 }
 
 // ── Survey list ───────────────────────────────────────────
