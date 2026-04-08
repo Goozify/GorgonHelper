@@ -155,10 +155,11 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-item.sg-marked{opacity:.35}
 .sg-item img{width:100%;height:100%;display:block;image-rendering:pixelated;border-radius:2px}
 .sg-item .sg-lock{position:absolute;bottom:1px;right:2px;font-size:9px;line-height:1;pointer-events:none}
-.sg-r-Legendary{border-color:rgba(201,168,76,.55)}
-.sg-r-Epic{border-color:rgba(128,96,160,.55)}
-.sg-r-Exceptional{border-color:rgba(90,153,96,.5)}
-.sg-r-Uncommon{border-color:rgba(80,120,200,.45)}
+.sg-r-Legendary{border-color:rgba(220,190,60,.6)}
+.sg-r-Epic{border-color:rgba(220,60,220,.55)}
+.sg-r-Exceptional{border-color:rgba(200,50,50,.6)}
+.sg-r-Rare{border-color:rgba(0,210,210,.5)}
+.sg-r-Uncommon{border-color:rgba(50,210,50,.5)}
 .sg-placeholder{width:100%;height:100%;background:var(--bg3);border-radius:2px}
 .sg-section{margin-bottom:18px}
 .sg-section-hdr{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -1613,7 +1614,7 @@ function sgShowTooltip(e, item) {
   const typeId = String(item.TypeID);
   const iData  = ITEMS[typeId];
   const rarity = item.Rarity || '';
-  const rarityColors = { Legendary:'var(--gold)', Epic:'#a880d0', Exceptional:'#7ab880', Uncommon:'#7aa0e8' };
+  const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
   const rarityColor = rarityColors[rarity] || 'var(--text-dim)';
   const powers = (item.TSysPowers || []).map(p =>
     `<div style="font-size:11px;color:var(--text-dim)">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`
@@ -1699,7 +1700,7 @@ function renderSellGiftTab() {
     const tid = String(it.TypeID);
     const keywords = ITEMS[tid]?.[4] || [];
     const rarity = it.Rarity || '';
-    const rarityColors = { Legendary:'var(--gold)', Epic:'#a880d0', Exceptional:'#7ab880', Uncommon:'#7aa0e8' };
+    const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
     const rarityColor  = rarityColors[rarity] || 'var(--text)';
     const marked = sellGiftMarked.has(it.TypeID);
 
