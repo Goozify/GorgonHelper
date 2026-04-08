@@ -147,7 +147,7 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-controls{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap}
 .sg-body{display:flex;flex:1;overflow:hidden}
 .sg-left{width:340px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:6px}
-.sg-right{flex:1;overflow-y:auto;padding:16px 18px}
+.sg-right{flex:1;overflow-y:auto;padding:10px 14px}
 .sg-grid{display:grid;grid-template-columns:repeat(6,48px);gap:4px;padding:6px}
 .sg-item{width:48px;height:48px;position:relative;cursor:pointer;border-radius:4px;border:2px solid rgba(255,255,255,.18);transition:border-color .1s,opacity .1s;background:var(--bg3)}
 .sg-item:hover{border-color:var(--gold-dim)!important}
@@ -161,13 +161,13 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-r-Rare{border-color:rgba(0,210,210,.75)}
 .sg-r-Uncommon{border-color:rgba(50,210,50,.75)}
 .sg-placeholder{width:100%;height:100%;background:var(--bg3);border-radius:2px}
-.sg-section{margin-bottom:18px}
-.sg-section-hdr{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
-.sg-npc-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;font-size:12px;transition:background .08s}
+.sg-section{margin-bottom:12px}
+.sg-section-hdr{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;max-width:640px}
+.sg-npc-row{display:grid;grid-template-columns:190px 140px 1fr;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;font-size:12px;transition:background .08s;max-width:640px}
 .sg-npc-row:hover{background:var(--bg3)}
-.sg-npc-name{flex:1;color:var(--text)}
-.sg-npc-area{font-size:11px;color:var(--text-dim);min-width:80px}
-.sg-npc-gold{font-size:11px;color:var(--gold);min-width:70px;text-align:right;white-space:nowrap}
+.sg-npc-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-npc-area{font-size:11px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-npc-gold{font-size:11px;color:var(--gold);white-space:nowrap}
 .sg-desire-Love{color:#e07070;font-size:11px;white-space:nowrap}
 .sg-desire-Like{color:#7ab880;font-size:11px;white-space:nowrap}
 
@@ -1721,7 +1721,7 @@ function renderSellGiftTab() {
     const marked = sellGiftMarked.has(it.TypeID);
 
     const itemHeader = `
-      <div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      <div style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);max-width:640px">
         <div style="font-family:'Cinzel',serif;font-size:15px;color:${rarityColor};margin-bottom:3px">${it.Name || 'Unknown item'}</div>
         ${rarity ? `<div style="font-size:12px;color:${rarityColor}">${rarity}${it.Slot?' · '+it.Slot:''}${it.Level?' · Lv'+it.Level:''}</div>` : ''}
         ${it.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-top:2px">${it.Value.toLocaleString()} 🪙 value</div>` : ''}
