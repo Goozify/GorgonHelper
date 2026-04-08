@@ -1557,7 +1557,23 @@ function sgGetSellNpcs(keywords) {
   return results.sort((a, b) => (b.gold || -1) - (a.gold || -1));
 }
 
-function sgGetGiftNpcs(keywords) {
+const _SG_RARITY_ORDER = ['', 'Uncommon', 'Rare', 'Exceptional', 'Epic', 'Legendary'];
+function sgPrefKwMatch(kw, kset, rarity, value) {
+  if (kw.startsWith('!'))            return !kset.has(kw.slice(1));
+  if (kw.startsWith('EquipmentSlot:')) return kset.has(kw.slice(14));
+  if (kw.startsWith('MinRarity:')) {
+    const minIdx  = _SG_RARITY_ORDER.indexOf(kw.slice(10));
+    const itemIdx = _SG_RARITY_ORDER.indexOf(rarity || '');
+    return minIdx >= 1 && itemIdx >= minIdx;
+  }
+  if (kw.startsWith('MinValue:'))    return (value || 0) >= parseInt(kw.slice(9));
+  if (kw === 'Crafted:y')            return !kset.has('Loot') && !kset.has('Stock');
+  if (kw === 'Rarity:Common')        return !rarity;
+  if (kw.includes(':'))              return false; // SkillPrereq:X, Special:X — can't evaluate, skip safely
+  return kset.has(kw);
+}
+
+function sgGetGiftNpcs(keywords, rarity, value) {
   const kset = new Set(keywords);
   const char = characters.find(c => c.id === sellGiftCharId);
   const charName = char?.charData.Character;
@@ -1570,7 +1586,7 @@ function sgGetGiftNpcs(keywords) {
     if (logFavor === 'SoulMates' || exportFavor === 'SoulMates') continue;
     let bestDesire = null, bestPrefName = '';
     for (const pref of (npc.prefs || [])) {
-      if (!pref.keywords.some(k => kset.has(k))) continue;
+      if (!pref.keywords.every(k => sgPrefKwMatch(k, kset, rarity, value))) continue;
       if (pref.desire === 'Hate') { bestDesire = null; break; }
       if (pref.desire === 'Love') { bestDesire = 'Love'; bestPrefName = pref.name; break; }
       if (pref.desire === 'Like' && bestDesire !== 'Love') { bestDesire = 'Like'; bestPrefName = pref.name; }
@@ -1716,7 +1732,7 @@ function renderSellGiftTab() {
       npcHtml = itemHeader + `<div style="color:var(--text-dim);font-size:12px">No keyword data for this item — game data may not be loaded yet.</div>`;
     } else {
       const sellNpcs = sgGetSellNpcs(keywords);
-      const giftNpcs = sgGetGiftNpcs(keywords);
+      const giftNpcs = sgGetGiftNpcs(keywords, rarity, it.Value);
 
       const sellRows = sellNpcs.map(n => {
         const goldStr = n.gold !== null ? `${n.gold.toLocaleString()} 🪙` : `? 🪙`;
