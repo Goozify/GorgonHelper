@@ -1583,7 +1583,7 @@ function sgGetGiftNpcs(keywords, rarity, value) {
   for (const [npcKey, npc] of Object.entries(NPCS)) {
     const logFavor    = logNpcs[npcKey]?.favorLevel;
     const exportFavor = charExportNpcs[npcKey]?.Favor;
-    if (logFavor === 'SoulMates' || exportFavor === 'SoulMates') continue;
+    const favor       = logFavor || exportFavor || null;
     let bestDesire = null, bestPrefName = '';
     for (const pref of (npc.prefs || [])) {
       if (!pref.keywords.every(k => sgPrefKwMatch(k, kset, rarity, value))) continue;
@@ -1592,9 +1592,17 @@ function sgGetGiftNpcs(keywords, rarity, value) {
       if (pref.desire === 'Like' && bestDesire !== 'Love') { bestDesire = 'Like'; bestPrefName = pref.name; }
     }
     if (!bestDesire) continue;
-    results.push({ npcKey, name: npc.name, area: npc.area, desire: bestDesire, prefName: bestPrefName });
+    results.push({ npcKey, name: npc.name, area: npc.area, desire: bestDesire, prefName: bestPrefName, favor });
   }
-  return results.sort((a, b) => (a.desire === 'Love' ? 0 : 1) - (b.desire === 'Love' ? 0 : 1) || a.name.localeCompare(b.name));
+  // Sort: Love before Like, SoulMates last (maxed), then alphabetical
+  return results.sort((a, b) => {
+    const aMax = a.favor === 'SoulMates' ? 1 : 0;
+    const bMax = b.favor === 'SoulMates' ? 1 : 0;
+    if (aMax !== bMax) return aMax - bMax;
+    const aLove = a.desire === 'Love' ? 0 : 1;
+    const bLove = b.desire === 'Love' ? 0 : 1;
+    return aLove - bLove || a.name.localeCompare(b.name);
+  });
 }
 
 function sgToggleMark(typeId) {
@@ -1746,8 +1754,13 @@ function renderSellGiftTab() {
 
       const giftRows = giftNpcs.map(n => {
         const heart = n.desire === 'Love' ? '❤' : '♡';
-        return `<div class="sg-npc-row">
-          <span class="sg-npc-name">${n.name}</span>
+        const isSoulMates = n.favor === 'SoulMates';
+        const favorBadge = n.favor
+          ? `<span style="font-size:10px;color:${isSoulMates?'#aaa':'var(--text-dim)'};margin-left:4px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:1px 5px;white-space:nowrap">${n.favor}</span>`
+          : '';
+        const rowStyle = isSoulMates ? ' style="opacity:.5"' : '';
+        return `<div class="sg-npc-row"${rowStyle}>
+          <span class="sg-npc-name">${n.name}${favorBadge}</span>
           <span class="sg-npc-area">${n.area}</span>
           <span class="sg-desire-${n.desire}">${heart} ${n.desire} <span style="color:var(--text-dim);font-size:10px">${n.prefName}</span></span>
         </div>`;
