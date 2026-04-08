@@ -1485,7 +1485,7 @@ function setMainTab(tab) {
 
 function renderAll() {
   // Always ensure activeCharId points to a valid character (or a known special value)
-  const specialIds = new Set(['__all__', '__availwo__', '__favorcalc__']);
+  const specialIds = new Set(['__all__', '__availwo__', '__favorcalc__', '__sellgift__']);
   const validChar = characters.find(c => c.id === activeCharId);
   if (!validChar && !specialIds.has(activeCharId) && characters.length > 0) {
     activeCharId = characters[0].id;
