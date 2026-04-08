@@ -149,17 +149,17 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-left{width:340px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:6px}
 .sg-right{flex:1;overflow-y:auto;padding:16px 18px}
 .sg-grid{display:grid;grid-template-columns:repeat(6,48px);gap:4px;padding:6px}
-.sg-item{width:48px;height:48px;position:relative;cursor:pointer;border-radius:4px;border:2px solid var(--border);transition:border-color .1s,opacity .1s;background:var(--bg3)}
+.sg-item{width:48px;height:48px;position:relative;cursor:pointer;border-radius:4px;border:2px solid rgba(255,255,255,.18);transition:border-color .1s,opacity .1s;background:var(--bg3)}
 .sg-item:hover{border-color:var(--gold-dim)!important}
 .sg-item.sg-selected{border-color:var(--gold)!important;box-shadow:0 0 0 1px var(--gold)}
 .sg-item.sg-marked{opacity:.35}
 .sg-item img{width:100%;height:100%;display:block;image-rendering:pixelated;border-radius:2px}
 .sg-item .sg-lock{position:absolute;bottom:1px;right:2px;font-size:9px;line-height:1;pointer-events:none}
-.sg-r-Legendary{border-color:rgba(220,190,60,.6)}
-.sg-r-Epic{border-color:rgba(220,60,220,.55)}
-.sg-r-Exceptional{border-color:rgba(200,50,50,.6)}
-.sg-r-Rare{border-color:rgba(0,210,210,.5)}
-.sg-r-Uncommon{border-color:rgba(50,210,50,.5)}
+.sg-r-Legendary{border-color:rgba(220,190,60,.85)}
+.sg-r-Epic{border-color:rgba(220,60,220,.8)}
+.sg-r-Exceptional{border-color:rgba(200,50,50,.8)}
+.sg-r-Rare{border-color:rgba(0,210,210,.75)}
+.sg-r-Uncommon{border-color:rgba(50,210,50,.75)}
 .sg-placeholder{width:100%;height:100%;background:var(--bg3);border-radius:2px}
 .sg-section{margin-bottom:18px}
 .sg-section-hdr{font-family:'Cinzel',serif;font-size:11px;color:var(--gold-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -1625,7 +1625,7 @@ function sgShowTooltip(e, item) {
   tip.className = 'item-tooltip';
   tip.style.cssText = 'pointer-events:none';
   tip.innerHTML = `
-    <div class="tooltip-title">${item.Name || (iData?.[0] || 'Unknown item')}</div>
+    <div class="tooltip-title" style="color:${rarityColor||'var(--text)'}">${item.Name || (iData?.[0] || 'Unknown item')}</div>
     ${rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}</div>` : ''}
     ${item.Level ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Level ${item.Level}</div>` : ''}
     ${item.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-bottom:4px">${item.Value.toLocaleString()} 🪙</div>` : ''}
@@ -1706,7 +1706,7 @@ function renderSellGiftTab() {
 
     const itemHeader = `
       <div style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--text-bright);margin-bottom:3px">${it.Name || 'Unknown item'}</div>
+        <div style="font-family:'Cinzel',serif;font-size:15px;color:${rarityColor};margin-bottom:3px">${it.Name || 'Unknown item'}</div>
         ${rarity ? `<div style="font-size:12px;color:${rarityColor}">${rarity}${it.Slot?' · '+it.Slot:''}${it.Level?' · Lv'+it.Level:''}</div>` : ''}
         ${it.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-top:2px">${it.Value.toLocaleString()} 🪙 value</div>` : ''}
         ${marked ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:5px 10px">🔒 Marked as important — double-click to unmark</div>` : ''}
