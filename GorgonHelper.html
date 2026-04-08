@@ -1684,9 +1684,9 @@ function renderSellGiftTab() {
   // ── Item grid ──────────────────────────────────────────────
   let gridHtml = '';
   if (char) {
-    const rawItems = (char.invData?.Items || []).filter(it =>
-      it.IsInInventory === true || (sellGiftSaddlebag && it.StorageVault === 'Saddlebag')
-    );
+    const rawItems = (char.invData?.Items || [])
+      .filter(it => it.IsInInventory === true || (sellGiftSaddlebag && it.StorageVault === 'Saddlebag'))
+      .sort((a, b) => (sellGiftMarked.has(a.TypeID) ? 1 : 0) - (sellGiftMarked.has(b.TypeID) ? 1 : 0));
     if (rawItems.length === 0) {
       gridHtml = `<div style="padding:20px;color:var(--text-dim);font-size:13px">No inventory items found.</div>`;
     } else {
