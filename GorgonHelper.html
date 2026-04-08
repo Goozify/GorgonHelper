@@ -1523,12 +1523,11 @@ function renderCharTabs() {
     + ((isWO || isVault || isFavor || isQuest || isRecipes) && characters.length > 1 ? `<div class="char-tab all-tab ${activeCharId==='__all__'?'active':''}" onclick="setActiveChar('__all__')">All Characters</div>` : '')
     + (isWO ? `<div class="char-tab ${activeCharId==='__availwo__'?'active':''}" onclick="setActiveChar('__availwo__')" title="Work Order scrolls in storage">📜 Available</div>` : '')
     + (isFavor ? `<div class="char-tab ${activeCharId==='__favorcalc__'?'active':''}" onclick="setActiveChar('__favorcalc__')" title="Favor Calculator"><span style="color:var(--gold);font-size:16px;line-height:1">Σ</span> Calculator</div>` : '')
-    + (mainTab === 'storage' && characters.length > 0 ? `<div class="char-tab ${activeCharId==='__sellgift__'?'active':''}" onclick="sgEnter()" title="Find NPCs to sell or gift items to">💰 Sell & Gift</div>` : '')
+    + (mainTab === 'storage' && characters.length > 0 ? `<div class="char-tab ${activeCharId==='__sellgift__'?'active':''}" onclick="setActiveChar('__sellgift__')" title="Find NPCs to sell or gift items to">Sell & Gift</div>` : '')
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
 }
 
 function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; questCompleteFilter = ''; completedWOSearch = ''; renderAll(); }
-function sgEnter() { activeCharId = '__sellgift__'; sellGiftCharId = null; sellGiftSelected = null; renderAll(); }
 function removeChar(id, e) {
   e.stopPropagation();
   if (characters.length===1) { showToast("Can't remove last character"); return; }
