@@ -709,6 +709,7 @@ let sellGiftAreaFilter = null;       // Active legend filter: null | 'sell' | 'g
 let sellGiftOpenAreas = new Set();   // Expanded area names in area mode
 let invInstanceMap = {};             // charName → {instanceId(str) → typeId(str)} — live tracking from log
 let _pendingDeletes = {};            // charName → {instanceId → {typeId, ts}} — deleted but reason not yet known
+let _pendingNewItems = {};           // charName → {instanceId → typeId} — ProcessAddItem(True) awaiting source confirmation
 let _sgItemStash = {};               // charName → {instanceId → full item object} — stashed while in storage
 let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
 let _sgPendingSaleGold = 0;          // accumulated item Value to deduct once VendorUpdateAvailableGold fires
@@ -1642,6 +1643,18 @@ function sgGetGiftNpcs(keywords, rarity, value) {
     const bLove = b.desire === 'Love' ? 0 : 1;
     return aLove - bLove || a.name.localeCompare(b.name);
   });
+}
+
+// Remove one IsInInventory item by typeId — used for drops, gifts, crafting decompositions
+function sgRemoveFromInventory(charName, typeId, instanceId) {
+  const char = characters.find(c => c.charData?.Character === charName);
+  if (!char?.invData?.Items) return false;
+  if (_pendingDeletes[charName]) delete _pendingDeletes[charName][instanceId];
+  const items = char.invData.Items;
+  const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
+  if (idx < 0) return false;
+  items.splice(idx, 1);
+  return true;
 }
 
 // Called when a sale is confirmed by ProcessVendorAddItem — removes item from displayed inventory
@@ -3452,15 +3465,22 @@ function _gardenMarkRipeByType(char, cropType) {
 
 function parsePlayerLogLines(lines) {
   let vendorCount = 0;
-  // Prune stale pending-delete entries (dropped/gifted items that never matched a follow-up event)
-  const _pruneBefore = Date.now() - 10000;
-  for (const map of Object.values(_pendingDeletes))
-    for (const [id, v] of Object.entries(map)) if (v.ts < _pruneBefore) delete map[id];
+  // Prune stale pending-delete entries (drops, gifts, crafting decompositions)
+  // These had no matching sale/storage event → remove from inventory display now
+  const _pruneBefore = Date.now() - 5000;
+  for (const [charName, map] of Object.entries(_pendingDeletes)) {
+    for (const [id, v] of Object.entries(map)) {
+      if (v.ts < _pruneBefore) {
+        if (sgRemoveFromInventory(charName, String(v.typeId), id)) vendorCount++;
+        delete map[id];
+      }
+    }
+  }
 
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; _sgItemStash[m[1]] = {}; updateHeaderChar(); continue; }
+    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; _pendingNewItems[m[1]] = {}; _sgItemStash[m[1]] = {}; updateHeaderChar(); continue; }
 
     // Always track owned pet IDs regardless of char state — so thirsty events later
     // can be matched even if currentLogChar was empty when the seed was planted
@@ -3511,13 +3531,21 @@ function parsePlayerLogLines(lines) {
       continue;
     }
     // ── Inventory instance tracking ──────────────────────────────────────────
-    // ProcessAddItem — item entered inventory (login burst, loot, take from storage)
-    m = line.match(/LocalPlayer: ProcessAddItem\((\w+)\((\d+)\)/);
+    // ProcessAddItem — item entered inventory
+    //   False = login sync (already in export) → update map only
+    //   True  = new item (loot, craft result, storage take) → buffer for display add
+    m = line.match(/LocalPlayer: ProcessAddItem\((\w+)\((\d+)\),\s*-?\d+,\s*(True|False)\)/);
     if (m) {
       const typeId = ITEMS_BY_INTERNAL_NAME[m[1]];
       if (typeId) {
         if (!invInstanceMap[char]) invInstanceMap[char] = {};
         invInstanceMap[char][m[2]] = typeId;
+        if (m[3] === 'True') {
+          // Buffer for display — claimed by ProcessRemoveFromStorageVault if it's a storage take,
+          // otherwise added to inventory at end of batch (loot / crafting result)
+          if (!_pendingNewItems[char]) _pendingNewItems[char] = {};
+          _pendingNewItems[char][m[2]] = typeId;
+        }
       }
     }
 
@@ -3578,6 +3606,8 @@ function parsePlayerLogLines(lines) {
     m = line.match(/LocalPlayer: ProcessRemoveFromStorageVault\(\d+,\s*-?\d+,\s*(\d+),\s*\d+\)/);
     if (m) {
       const instanceId = m[1];
+      // Claim from pendingNewItems so end-of-batch loot/craft handler doesn't also add it
+      if (_pendingNewItems[char]) delete _pendingNewItems[char][instanceId];
       const typeId = invInstanceMap[char]?.[instanceId]; // set by preceding ProcessAddItem
       if (typeId !== undefined) {
         if (sgAddInventoryItem(char, String(typeId), instanceId)) vendorCount++;
@@ -3759,6 +3789,20 @@ function parsePlayerLogLines(lines) {
       }
     }
   }
+  // End-of-batch: add remaining pending new items (loot, crafting results) to inventory display.
+  // Any that were claimed by ProcessRemoveFromStorageVault were already removed from this map.
+  for (const [charName, map] of Object.entries(_pendingNewItems)) {
+    const charObj = characters.find(c => c.charData?.Character === charName);
+    if (charObj?.invData?.Items) {
+      for (const [, typeId] of Object.entries(map)) {
+        const displayName = ITEMS[String(typeId)]?.[0] || '';
+        charObj.invData.Items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
+        vendorCount++;
+      }
+    }
+    _pendingNewItems[charName] = {};
+  }
+
   if (vendorCount > 0) playerLogLastUpdate = Date.now();
   savePlayerLogData();
   return vendorCount;
