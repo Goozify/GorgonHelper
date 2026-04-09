@@ -708,6 +708,7 @@ let sellGiftAreaNpcKey = null;       // Selected NPC in area mode
 let sellGiftAreaFilter = null;       // Active legend filter: null | 'sell' | 'gift' | 'both'
 let sellGiftOpenAreas = new Set();   // Expanded area names in area mode
 let invInstanceMap = {};             // charName → {instanceId(str) → typeId(str)} — live tracking from log
+let _pendingDeletes = {};            // charName → {instanceId → {typeId, ts}} — deleted but reason not yet known
 let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
 
 // ═══════════════════════════════════════════════════════════
@@ -1645,9 +1646,7 @@ function sgGetGiftNpcs(keywords, rarity, value) {
 function sgRemoveSoldItem(charName, typeId, instanceId) {
   const char = characters.find(c => c.charData?.Character === charName);
   if (!char?.invData?.Items) return false;
-  // Remove from instance map first
-  if (invInstanceMap[charName]) delete invInstanceMap[charName][instanceId];
-  // Find one matching IsInInventory item to remove
+  if (_pendingDeletes[charName]) delete _pendingDeletes[charName][instanceId];
   const items = char.invData.Items;
   const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
   if (idx < 0) return false;
@@ -1655,6 +1654,30 @@ function sgRemoveSoldItem(charName, typeId, instanceId) {
   items.splice(idx, 1);
   const npcName = _sgLastVendorKey ? (NPCS[_sgLastVendorKey]?.name || _sgLastVendorKey.replace('NPC_', '')) : 'vendor';
   showToast(`Sold ${itemName} → ${npcName}`);
+  return true;
+}
+
+// Called when ProcessAddToStorageVault confirms item was deposited into a vault
+function sgMoveItemToStorage(charName, typeId, instanceId) {
+  const char = characters.find(c => c.charData?.Character === charName);
+  if (!char?.invData?.Items) return false;
+  if (_pendingDeletes[charName]) delete _pendingDeletes[charName][instanceId];
+  const items = char.invData.Items;
+  const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
+  if (idx < 0) return false;
+  const itemName = items[idx].Name || ITEMS[String(typeId)]?.[0] || 'item';
+  items.splice(idx, 1);
+  showToast(`Stored ${itemName}`);
+  return true;
+}
+
+// Called when ProcessRemoveFromStorageVault confirms item was taken from a vault
+function sgAddInventoryItem(charName, typeId, instanceId) {
+  const char = characters.find(c => c.charData?.Character === charName);
+  if (!char?.invData?.Items) return false;
+  const displayName = ITEMS[String(typeId)]?.[0] || '';
+  char.invData.Items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
+  showToast(`Took ${displayName} from storage`);
   return true;
 }
 
@@ -3406,10 +3429,15 @@ function _gardenMarkRipeByType(char, cropType) {
 
 function parsePlayerLogLines(lines) {
   let vendorCount = 0;
+  // Prune stale pending-delete entries (dropped/gifted items that never matched a follow-up event)
+  const _pruneBefore = Date.now() - 10000;
+  for (const map of Object.values(_pendingDeletes))
+    for (const [id, v] of Object.entries(map)) if (v.ts < _pruneBefore) delete map[id];
+
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; updateHeaderChar(); continue; }
+    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; updateHeaderChar(); continue; }
 
     // Always track owned pet IDs regardless of char state — so thirsty events later
     // can be matched even if currentLogChar was empty when the seed was planted
@@ -3458,7 +3486,7 @@ function parsePlayerLogLines(lines) {
       continue;
     }
     // ── Inventory instance tracking ──────────────────────────────────────────
-    // ProcessAddItem — item entered inventory (login burst, loot, storage take)
+    // ProcessAddItem — item entered inventory (login burst, loot, take from storage)
     m = line.match(/LocalPlayer: ProcessAddItem\((\w+)\((\d+)\)/);
     if (m) {
       const typeId = ITEMS_BY_INTERNAL_NAME[m[1]];
@@ -3467,17 +3495,31 @@ function parsePlayerLogLines(lines) {
         invInstanceMap[char][m[2]] = typeId;
       }
     }
-    // ProcessDeleteItem — item left inventory for any reason (sold, gifted, dropped, stored)
-    m = line.match(/LocalPlayer: ProcessDeleteItem\((\d+)\)/);
-    if (m && invInstanceMap[char]) delete invInstanceMap[char][m[1]];
 
-    // ProcessVendorAddItem — confirms this DeleteItem was a sale
+    // ProcessDeleteItem — item left inventory; reason unknown until next line
+    // Move to pendingDeletes buffer so downstream events can still find the typeId
+    m = line.match(/LocalPlayer: ProcessDeleteItem\((\d+)\)/);
+    if (m) {
+      const instanceId = m[1];
+      const typeId = invInstanceMap[char]?.[instanceId];
+      if (typeId !== undefined) {
+        if (!_pendingDeletes[char]) _pendingDeletes[char] = {};
+        _pendingDeletes[char][instanceId] = { typeId, ts: Date.now() };
+        delete invInstanceMap[char][instanceId];
+      }
+    }
+
+    // ProcessVendorAddItem — confirms the preceding DeleteItem was a sale
     m = line.match(/LocalPlayer: ProcessVendorAddItem\((\d+),\s*\w+\((\d+)\)/);
     if (m) {
       const npcKey = d.idMap[m[1]];
       if (npcKey) _sgLastVendorKey = npcKey;
-      const typeId = invInstanceMap[char]?.[m[2]];
-      if (typeId && sgRemoveSoldItem(char, String(typeId), m[2])) vendorCount++;
+      const instanceId = m[2];
+      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId;
+      if (typeId !== undefined) {
+        delete _pendingDeletes[char][instanceId];
+        if (sgRemoveSoldItem(char, String(typeId), instanceId)) vendorCount++;
+      }
     }
 
     // ProcessVendorUpdateAvailableGold — update vendor's gold after sale
@@ -3487,6 +3529,27 @@ function parsePlayerLogLines(lines) {
       d.npcs[_sgLastVendorKey].currentGold = parseInt(m[1]);
       d.npcs[_sgLastVendorKey].loggedAt = Date.now();
       vendorCount++;
+    }
+
+    // ProcessAddToStorageVault — confirms the preceding DeleteItem was a storage deposit
+    m = line.match(/LocalPlayer: ProcessAddToStorageVault\(\d+,\s*-?\d+,\s*-?\d+,\s*\w+\((\d+)\)\)/);
+    if (m) {
+      const instanceId = m[1];
+      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId;
+      if (typeId !== undefined) {
+        delete _pendingDeletes[char][instanceId];
+        if (sgMoveItemToStorage(char, String(typeId), instanceId)) vendorCount++;
+      }
+    }
+
+    // ProcessRemoveFromStorageVault — item taken from storage; ProcessAddItem already fired
+    m = line.match(/LocalPlayer: ProcessRemoveFromStorageVault\(\d+,\s*-?\d+,\s*(\d+),\s*\d+\)/);
+    if (m) {
+      const instanceId = m[1];
+      const typeId = invInstanceMap[char]?.[instanceId]; // set by preceding ProcessAddItem
+      if (typeId !== undefined) {
+        if (sgAddInventoryItem(char, String(typeId), instanceId)) vendorCount++;
+      }
     }
     // ─────────────────────────────────────────────────────────────────────────
 
