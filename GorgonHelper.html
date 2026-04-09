@@ -3496,6 +3496,7 @@ function parsePlayerLogLines(lines) {
     if (m) {
       const npcKey = d.idMap[m[1]];
       if (npcKey) {
+        _sgLastVendorKey = npcKey; // set here so gold updates work even if VendorAddItem lookup fails
         const prevGold = d.npcs[npcKey]?.currentGold;
         d.npcs[npcKey] = { ...(d.npcs[npcKey] || {}), currentGold: +m[3], maxGold: +m[5], resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
         if (prevGold !== +m[3]) {
