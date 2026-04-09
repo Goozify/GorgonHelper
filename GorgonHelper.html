@@ -170,6 +170,25 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-npc-gold{font-size:11px;color:var(--gold);white-space:nowrap}
 .sg-desire-Love{color:#e07070;font-size:11px;white-space:nowrap}
 .sg-desire-Like{color:#7ab880;font-size:11px;white-space:nowrap}
+/* area mode */
+.sg-mode-toggle{display:flex;gap:0;border:1px solid var(--border);border-radius:5px;overflow:hidden;flex-shrink:0}
+.sg-mode-btn{padding:4px 13px;font-size:11px;cursor:pointer;border:none;background:var(--bg3);color:var(--text-dim);transition:background .1s,color .1s;font-family:'Crimson Pro',serif;letter-spacing:.03em}
+.sg-mode-btn.active{background:var(--gold-dim);color:var(--bg)}
+.sg-area-panel{padding:10px 14px;overflow-y:auto;flex:1}
+.sg-area-hdr{font-family:'Cinzel',serif;font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;margin:14px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--border);max-width:600px}
+.sg-area-hdr:first-child{margin-top:2px}
+.sg-chip-row{display:flex;flex-wrap:wrap;gap:5px;max-width:600px;margin-bottom:4px}
+.sg-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid transparent;transition:opacity .1s,border-color .1s;user-select:none;font-family:'Crimson Pro',serif}
+.sg-chip:hover{opacity:.85}
+.sg-chip.active{outline:2px solid var(--text);outline-offset:1px}
+.sg-chip-sell{background:rgba(180,140,20,.18);border-color:rgba(200,160,40,.5);color:#c8a830}
+.sg-chip-gift{background:rgba(200,60,100,.18);border-color:rgba(200,80,100,.5);color:#e07080}
+.sg-chip-both{background:rgba(140,60,180,.18);border-color:rgba(160,80,200,.5);color:#c080e0}
+/* item highlight in area mode */
+.sg-item.sg-hl-sell{border-color:rgba(210,170,40,.95)!important;box-shadow:0 0 5px rgba(210,170,40,.4)}
+.sg-item.sg-hl-gift{border-color:rgba(210,70,100,.95)!important;box-shadow:0 0 5px rgba(210,70,100,.4)}
+.sg-item.sg-hl-both{border-color:rgba(170,80,220,.95)!important;box-shadow:0 0 6px rgba(170,80,220,.45)}
+.sg-item.sg-hl-none{opacity:.22}
 
 /* ── Work Orders ── */
 .wo-section{margin-bottom:28px}
@@ -679,6 +698,8 @@ let sellGiftCharId = null;       // Selected char ID in sell/gift tool
 let sellGiftSelected = null;     // Currently selected raw item object
 let sellGiftMarked = new Set();  // TypeIDs marked as important/equipped
 let sellGiftSaddlebag = false;   // Toggle: include saddlebag items
+let sellGiftMode = 'item';       // 'item' | 'area'
+let sellGiftAreaNpcKey = null;   // Selected NPC in area mode
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -1605,6 +1626,37 @@ function sgGetGiftNpcs(keywords, rarity, value) {
   });
 }
 
+function sgSetMode(mode) {
+  sellGiftMode = mode;
+  sellGiftAreaNpcKey = null;
+  renderSellGiftTab();
+}
+
+function sgSelectAreaNpc(npcKey) {
+  sellGiftAreaNpcKey = sellGiftAreaNpcKey === npcKey ? null : npcKey;
+  renderSellGiftTab();
+}
+
+function sgBuildNpcItemMap(items) {
+  // Returns { npcKey -> { npcName, area, sell: Set<idx>, gift: Set<idx> } }
+  const map = {};
+  items.forEach((it, idx) => {
+    const tid = String(it.TypeID);
+    const kws = ITEMS[tid]?.[4] || [];
+    const rarity = it.Rarity || '';
+    const value = it.Value || 0;
+    sgGetSellNpcs(kws).forEach(n => {
+      if (!map[n.npcKey]) map[n.npcKey] = { npcName: n.name, area: n.area, sell: new Set(), gift: new Set() };
+      map[n.npcKey].sell.add(idx);
+    });
+    sgGetGiftNpcs(kws, rarity, value).forEach(n => {
+      if (!map[n.npcKey]) map[n.npcKey] = { npcName: n.name, area: n.area, sell: new Set(), gift: new Set() };
+      map[n.npcKey].gift.add(idx);
+    });
+  });
+  return map;
+}
+
 function sgToggleMark(typeId) {
   if (sellGiftMarked.has(typeId)) sellGiftMarked.delete(typeId);
   else sellGiftMarked.add(typeId);
@@ -1683,6 +1735,7 @@ function renderSellGiftTab() {
 
   // ── Item grid ──────────────────────────────────────────────
   let gridHtml = '';
+  let npcItemMap = null; // built only in area mode
   if (char) {
     const rawItems = (char.invData?.Items || [])
       .filter(it => it.IsInInventory === true || (sellGiftSaddlebag && it.StorageVault === 'Saddlebag'))
@@ -1690,6 +1743,15 @@ function renderSellGiftTab() {
     if (rawItems.length === 0) {
       gridHtml = `<div style="padding:20px;color:var(--text-dim);font-size:13px">No inventory items found.</div>`;
     } else {
+      // In area mode, build reverse map and compute highlight per item index
+      let hlSell = null, hlGift = null;
+      if (sellGiftMode === 'area') {
+        npcItemMap = sgBuildNpcItemMap(rawItems);
+        if (sellGiftAreaNpcKey && npcItemMap[sellGiftAreaNpcKey]) {
+          hlSell = npcItemMap[sellGiftAreaNpcKey].sell;
+          hlGift = npcItemMap[sellGiftAreaNpcKey].gift;
+        }
+      }
       gridHtml = `<div class="sg-grid">` + rawItems.map((it, idx) => {
         const tid = String(it.TypeID);
         const iconUrl = getItemIconUrl(tid);
@@ -1697,12 +1759,20 @@ function renderSellGiftTab() {
         const selected = sellGiftSelected && sellGiftSelected === it;
         const rarity = it.Rarity || '';
         const rarClass = rarity ? ` sg-r-${rarity}` : '';
+        let hlClass = '';
+        if (hlSell || hlGift) {
+          const inSell = hlSell?.has(idx), inGift = hlGift?.has(idx);
+          if (inSell && inGift) hlClass = ' sg-hl-both';
+          else if (inSell)      hlClass = ' sg-hl-sell';
+          else if (inGift)      hlClass = ' sg-hl-gift';
+          else                  hlClass = ' sg-hl-none';
+        }
         const imgHtml = iconUrl
           ? `<img src="${iconUrl}" alt="${it.Name||''}">`
           : `<div class="sg-placeholder"></div>`;
-        return `<div class="sg-item${rarClass}${marked?' sg-marked':''}${selected?' sg-selected':''}"
+        return `<div class="sg-item${rarClass}${marked?' sg-marked':''}${selected?' sg-selected':''}${hlClass}"
           data-idx="${idx}"
-          onclick="sgSelect(_sgItems[${idx}])"
+          onclick="${sellGiftMode==='area'?`sgShowTooltip(event,_sgItems[${idx}])`:`sgSelect(_sgItems[${idx}])`}"
           ondblclick="sgToggleMark(${it.TypeID})"
           onmouseenter="sgShowTooltip(event,_sgItems[${idx}])"
           onmouseleave="sgHideTooltip()">
@@ -1710,16 +1780,46 @@ function renderSellGiftTab() {
           ${marked ? '<div class="sg-lock">🔒</div>' : ''}
         </div>`;
       }).join('') + `</div>`;
-      // Store items ref globally so onclick can access them
       window._sgItems = rawItems;
     }
   } else {
     gridHtml = `<div style="padding:20px;color:var(--text-dim);font-size:13px">Select a character above.</div>`;
   }
 
-  // ── NPC panel ─────────────────────────────────────────────
+  // ── NPC panel / Area panel ────────────────────────────────
   let npcHtml = '';
-  if (sellGiftSelected) {
+  if (sellGiftMode === 'area') {
+    if (!npcItemMap || Object.keys(npcItemMap).length === 0) {
+      npcHtml = `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
+        <div style="font-size:28px;margin-bottom:8px">🗺</div>No items in inventory — select a character above.</div>`;
+    } else {
+      // Group NPCs by area
+      const byArea = {};
+      for (const [npcKey, data] of Object.entries(npcItemMap)) {
+        const area = data.area || 'Unknown';
+        if (!byArea[area]) byArea[area] = [];
+        byArea[area].push({ npcKey, ...data });
+      }
+      const legend = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;max-width:600px">
+        <span style="color:var(--text-dim)">Click a name to highlight items:</span>
+        <span class="sg-chip sg-chip-sell" style="cursor:default">💰 Sell</span>
+        <span class="sg-chip sg-chip-gift" style="cursor:default">🎁 Gift</span>
+        <span class="sg-chip sg-chip-both" style="cursor:default">💰🎁 Both</span>
+      </div>`;
+      const areaBlocks = Object.keys(byArea).sort().map(area => {
+        const npcs = byArea[area].sort((a,b) => a.npcName.localeCompare(b.npcName));
+        const chips = npcs.map(n => {
+          const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
+          const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
+          const icon = hasSell && hasGift ? '💰🎁' : hasSell ? '💰' : '🎁';
+          const isActive = sellGiftAreaNpcKey === n.npcKey;
+          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')">${icon} ${n.npcName}</span>`;
+        }).join('');
+        return `<div class="sg-area-hdr">${area}</div><div class="sg-chip-row">${chips}</div>`;
+      }).join('');
+      npcHtml = legend + areaBlocks;
+    }
+  } else if (sellGiftSelected) {
     const it = sellGiftSelected;
     const tid = String(it.TypeID);
     const keywords = ITEMS[tid]?.[4] || [];
@@ -1776,12 +1876,16 @@ function renderSellGiftTab() {
              ${giftRows}
            </div>`;
     }
-  } else {
+  } else if (sellGiftMode === 'item') {
     npcHtml = `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
       <div style="font-size:32px;margin-bottom:10px">👆</div>
       Click an item to see which NPCs will buy or accept it as a gift
     </div>`;
   }
+
+  const rightContent = sellGiftMode === 'area'
+    ? `<div class="sg-area-panel">${npcHtml}</div>`
+    : `<div class="sg-right">${npcHtml}</div>`;
 
   el.innerHTML = `
 <div class="sg-outer">
@@ -1796,10 +1900,16 @@ function renderSellGiftTab() {
       Include Saddlebag
     </label>
     ${markedCount ? `<span style="font-size:11px;color:var(--text-dim)">🔒 ${markedCount} item${markedCount!==1?'s':''} marked</span>` : ''}
+    <div style="margin-left:auto">
+      <div class="sg-mode-toggle">
+        <button class="sg-mode-btn${sellGiftMode==='item'?' active':''}" onclick="sgSetMode('item')">Items</button>
+        <button class="sg-mode-btn${sellGiftMode==='area'?' active':''}" onclick="sgSetMode('area')">Areas</button>
+      </div>
+    </div>
   </div>
   <div class="sg-body">
     <div class="sg-left">${gridHtml}</div>
-    <div class="sg-right">${npcHtml}</div>
+    ${rightContent}
   </div>
 </div>`;
 }
