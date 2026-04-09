@@ -636,6 +636,7 @@ function _wsHandleMsg(msg) {
     savePlayerLogData();
     if (count > 0 && mainTab === 'favors') renderFavorsTab();
     if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+    if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
   }
 }
 
@@ -706,6 +707,8 @@ let sellGiftMode = 'area';           // 'item' | 'area'
 let sellGiftAreaNpcKey = null;       // Selected NPC in area mode
 let sellGiftAreaFilter = null;       // Active legend filter: null | 'sell' | 'gift' | 'both'
 let sellGiftOpenAreas = new Set();   // Expanded area names in area mode
+let invInstanceMap = {};             // charName → {instanceId(str) → typeId(str)} — live tracking from log
+let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -1636,6 +1639,23 @@ function sgGetGiftNpcs(keywords, rarity, value) {
     const bLove = b.desire === 'Love' ? 0 : 1;
     return aLove - bLove || a.name.localeCompare(b.name);
   });
+}
+
+// Called when a sale is confirmed by ProcessVendorAddItem — removes item from displayed inventory
+function sgRemoveSoldItem(charName, typeId, instanceId) {
+  const char = characters.find(c => c.charData?.Character === charName);
+  if (!char?.invData?.Items) return false;
+  // Remove from instance map first
+  if (invInstanceMap[charName]) delete invInstanceMap[charName][instanceId];
+  // Find one matching IsInInventory item to remove
+  const items = char.invData.Items;
+  const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
+  if (idx < 0) return false;
+  const itemName = items[idx].Name || ITEMS[String(typeId)]?.[0] || 'item';
+  items.splice(idx, 1);
+  const npcName = _sgLastVendorKey ? (NPCS[_sgLastVendorKey]?.name || _sgLastVendorKey.replace('NPC_', '')) : 'vendor';
+  showToast(`Sold ${itemName} → ${npcName}`);
+  return true;
 }
 
 function sgSetMode(mode) {
@@ -3389,7 +3409,7 @@ function parsePlayerLogLines(lines) {
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; updateHeaderChar(); continue; }
+    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; updateHeaderChar(); continue; }
 
     // Always track owned pet IDs regardless of char state — so thirsty events later
     // can be matched even if currentLogChar was empty when the seed was planted
@@ -3437,6 +3457,39 @@ function parsePlayerLogLines(lines) {
       }
       continue;
     }
+    // ── Inventory instance tracking ──────────────────────────────────────────
+    // ProcessAddItem — item entered inventory (login burst, loot, storage take)
+    m = line.match(/LocalPlayer: ProcessAddItem\((\w+)\((\d+)\)/);
+    if (m) {
+      const typeId = ITEMS_BY_INTERNAL_NAME[m[1]];
+      if (typeId) {
+        if (!invInstanceMap[char]) invInstanceMap[char] = {};
+        invInstanceMap[char][m[2]] = typeId;
+      }
+    }
+    // ProcessDeleteItem — item left inventory for any reason (sold, gifted, dropped, stored)
+    m = line.match(/LocalPlayer: ProcessDeleteItem\((\d+)\)/);
+    if (m && invInstanceMap[char]) delete invInstanceMap[char][m[1]];
+
+    // ProcessVendorAddItem — confirms this DeleteItem was a sale
+    m = line.match(/LocalPlayer: ProcessVendorAddItem\((\d+),\s*\w+\((\d+)\)/);
+    if (m) {
+      const npcKey = d.idMap[m[1]];
+      if (npcKey) _sgLastVendorKey = npcKey;
+      const typeId = invInstanceMap[char]?.[m[2]];
+      if (typeId && sgRemoveSoldItem(char, String(typeId), m[2])) vendorCount++;
+    }
+
+    // ProcessVendorUpdateAvailableGold — update vendor's gold after sale
+    m = line.match(/LocalPlayer: ProcessVendorUpdateAvailableGold\(\d+,\s*\d+,\s*(\d+)\)/);
+    if (m && _sgLastVendorKey) {
+      if (!d.npcs[_sgLastVendorKey]) d.npcs[_sgLastVendorKey] = { loggedAt: Date.now() };
+      d.npcs[_sgLastVendorKey].currentGold = parseInt(m[1]);
+      d.npcs[_sgLastVendorKey].loggedAt = Date.now();
+      vendorCount++;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Appearance loop: track last clean crop name for planted-stage detection
     // Format: "Download appearance loop @ModelName(scale=N)" — alpha-only names are decodable crop names
     m = line.match(/Download appearance loop @([A-Za-z0-9]+)\(scale=/);
@@ -3668,6 +3721,7 @@ async function pollPlayerLog() {
     const count = parsePlayerLogLines(lines);
     if (count > 0 && mainTab === 'favors') renderFavorsTab();
     if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+    if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
     if (mainTab === 'settings') renderSettingsTab();
   } catch(e) {
     // File moved or permission lost
