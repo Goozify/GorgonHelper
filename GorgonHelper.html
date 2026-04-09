@@ -1650,6 +1650,73 @@ function sgSelectAreaNpc(npcKey) {
   renderSellGiftTab();
 }
 
+let _sgNpcTipTimer = null;
+function sgShowNpcTooltip(e, npcKey) {
+  clearTimeout(_sgNpcTipTimer);
+  const old = document.getElementById('sgNpcTooltip');
+  if (old) old.remove();
+
+  const char     = characters.find(c => c.id === sellGiftCharId);
+  const charName = char?.charData.Character;
+  const log      = charName ? playerLogData[charName]?.npcs?.[npcKey] : null;
+  const exportNpc = char?.charData?.NPCs?.[npcKey];
+  const npc      = NPCS[npcKey];
+
+  // Favor
+  const favorLevel = log?.favorLevel || exportNpc?.FavorLevel || null;
+  const exactFavor = log?.exactFavor ?? null;
+  const favorHtml  = favorLevel
+    ? `<div style="margin-bottom:6px">${renderFavorCell(favorLevel, exactFavor)}</div>`
+    : `<div style="color:var(--text-dim);font-size:11px;margin-bottom:6px">Favor unknown</div>`;
+
+  // Gold
+  let goldHtml = '';
+  if (log?.currentGold != null) {
+    const pct   = log.maxGold > 0 ? Math.round(log.currentGold / log.maxGold * 100) : 0;
+    const gCol  = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
+    const reset = formatGoldReset(log.resetAt);
+    const ago   = Math.round((Date.now() - log.loggedAt) / 60000);
+    const agoStr = ago < 60 ? `${ago}m ago` : `${Math.round(ago/60)}h ago`;
+    goldHtml = `
+      <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Gold <span style="opacity:.6">(seen ${agoStr})</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <div style="flex:1;background:var(--bg3);border-radius:3px;height:6px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${gCol};border-radius:3px"></div>
+          </div>
+          <span style="font-size:11px;color:var(--gold);white-space:nowrap">${log.currentGold.toLocaleString()} / ${log.maxGold.toLocaleString()}</span>
+        </div>
+        <div style="font-size:10px;color:var(--text-dim)">Resets in <span style="color:var(--text)">${reset}</span></div>
+      </div>`;
+  } else {
+    goldHtml = `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px;font-size:10px;color:var(--text-dim)">Gold unknown — visit NPC to update</div>`;
+  }
+
+  const tip = document.createElement('div');
+  tip.id = 'sgNpcTooltip';
+  tip.className = 'item-tooltip';
+  tip.style.cssText = 'pointer-events:none;min-width:200px';
+  tip.innerHTML = `
+    <div style="font-family:'Cinzel',serif;font-size:12px;color:var(--text-bright);margin-bottom:2px">${npc?.name || npcKey}</div>
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">${npc?.area || ''}</div>
+    ${favorHtml}${goldHtml}`;
+  document.body.appendChild(tip);
+
+  const rect = e.target.getBoundingClientRect();
+  const tipW = 220, tipH = tip.offsetHeight || 140;
+  let left = rect.left, top = rect.bottom + 6;
+  if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8;
+  if (top + tipH > window.innerHeight - 8) top = rect.top - tipH - 6;
+  tip.style.left = left + 'px';
+  tip.style.top  = top + 'px';
+}
+function sgHideNpcTooltip() {
+  _sgNpcTipTimer = setTimeout(() => {
+    const t = document.getElementById('sgNpcTooltip');
+    if (t) t.remove();
+  }, 80);
+}
+
 function sgBuildNpcItemMap(items) {
   // Returns { npcKey -> { npcName, area, sell: Set<idx>, gift: Set<idx> } }
   // Skips marked (important/locked) items and SoulMates NPCs for gifting
@@ -1848,7 +1915,7 @@ function renderSellGiftTab() {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
           const isActive = sellGiftAreaNpcKey === n.npcKey;
-          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')">${n.npcName}</span>`;
+          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')" onmouseenter="sgShowNpcTooltip(event,'${n.npcKey}')" onmouseleave="sgHideNpcTooltip()">${n.npcName}</span>`;
         }).join('');
         return hdr + `<div class="sg-chip-row">${chips}</div>`;
       }).join('');
