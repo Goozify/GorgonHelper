@@ -1777,6 +1777,37 @@ function sgToggleSaddlebag() {
 
 // Tooltip for item cells
 let _sgTooltipTimer = null;
+const _SG_KW_CATEGORY = [
+  // Weapons — specific first
+  ['IceStaff','Ice Staff'],['FireStaff','Fire Staff'],['WeatherStaff','Weather Staff'],
+  ['Staff','Staff'],['Sword','Sword'],['Hammer','Hammer'],['Knife','Knife'],
+  ['UnarmedWeapon','Unarmed Weapon'],['BardInstrument','Bard Instrument'],
+  ['Instrument','Instrument'],['HolySymbol','Holy Symbol'],
+  // Shields / offhand
+  ['OffHandShield','Shield'],['Shield','Shield'],
+  // Jewelry
+  ['Amulet','Amulet'],['Ring','Ring'],['Belt','Belt'],
+  // Armor — Head
+  ['MetalHelm','Metal Helm'],['ClothHelm','Cloth Helm'],['OrganicHelm','Organic Helm'],
+  // Armor — Chest
+  ['MetalShirt','Metal Chest Armor'],['ClothShirt','Cloth Chest Armor'],['LeatherShirt','Leather Chest Armor'],
+  // Armor — Hands
+  ['MetalGloves','Metal Gloves'],['LeatherGloves','Leather Gloves'],
+  // Armor — Legs
+  ['MetalPants','Metal Leggings'],['ClothPants','Cloth Leggings'],['LeatherPants','Leather Leggings'],
+  // Armor — Feet
+  ['MetalBoots','Metal Boots'],['ClothBoots','Cloth Boots'],['LeatherBoots','Leather Boots'],
+  // Generic
+  ['Necklace','Necklace'],['AnimalShoes','Animal Shoes'],
+];
+function sgItemCategory(typeId) {
+  const kws = ITEMS[String(typeId)]?.[4];
+  if (!kws) return null;
+  const kset = new Set(kws);
+  for (const [kw, label] of _SG_KW_CATEGORY) if (kset.has(kw)) return label;
+  return null;
+}
+
 function sgParsePowerDesc(desc, sz) {
   sz = sz || 16;
   // Skip pure token-based descriptions like {MOD_SKILL_X}{0.3}
@@ -1795,6 +1826,7 @@ function sgShowTooltip(e, item) {
   const rarity = item.Rarity || '';
   const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
   const rarityColor = rarityColors[rarity] || 'var(--text-dim)';
+  const category = sgItemCategory(typeId);
   const powers = (item.TSysPowers || []).map(p => {
     const tierMap = TSYS[p.Power];
     if (tierMap) {
@@ -1813,7 +1845,7 @@ function sgShowTooltip(e, item) {
   tip.style.cssText = 'pointer-events:none';
   tip.innerHTML = `
     <div class="tooltip-title" style="color:${rarityColor||'var(--text)'}">${item.Name || (iData?.[0] || 'Unknown item')}</div>
-    ${rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}</div>` : ''}
+    ${rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}${category ? ` · ${category}` : ''}</div>` : ''}
     ${item.Level ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Level ${item.Level}</div>` : ''}
     ${item.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-bottom:4px">${item.Value.toLocaleString()} 🪙</div>` : ''}
     ${powers ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">${powers}</div>` : ''}
@@ -1954,7 +1986,7 @@ function renderSellGiftTab() {
     const itemHeader = `
       <div style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);max-width:640px">
         <div style="font-family:'Cinzel',serif;font-size:15px;color:${rarityColor};margin-bottom:3px">${it.Name || 'Unknown item'}</div>
-        ${rarity ? `<div style="font-size:12px;color:${rarityColor}">${rarity}${it.Slot?' · '+it.Slot:''}${it.Level?' · Lv'+it.Level:''}</div>` : ''}
+        ${rarity ? `<div style="font-size:12px;color:${rarityColor}">${rarity}${it.Slot?' · '+it.Slot:''}${sgItemCategory(String(it.TypeID)) ? ' · '+sgItemCategory(String(it.TypeID)) : ''}${it.Level?' · Lv'+it.Level:''}</div>` : ''}
         ${it.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-top:2px">${it.Value.toLocaleString()} 🪙 value</div>` : ''}
         ${marked ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:5px 10px">🔒 Marked as important — double-click to unmark</div>` : ''}
       </div>`;
