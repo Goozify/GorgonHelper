@@ -1679,18 +1679,26 @@ function sgMoveItemToStorage(charName, typeId, instanceId) {
 function sgAddInventoryItem(charName, typeId, instanceId) {
   const char = characters.find(c => c.charData?.Character === charName);
   if (!char?.invData?.Items) return false;
-  // Restore full item data from stash if available, otherwise create a minimal entry
+  const items = char.invData.Items;
+  // Restore full item data from stash if available (item was stored this session — safe to add back)
   const stashed = _sgItemStash[charName]?.[instanceId];
   if (stashed) {
     delete _sgItemStash[charName][instanceId];
     stashed.IsInInventory = true;
-    char.invData.Items.push(stashed);
+    items.push(stashed);
     showToast(`Took ${stashed.Name || ITEMS[String(typeId)]?.[0] || 'item'} from storage`);
-  } else {
-    const displayName = ITEMS[String(typeId)]?.[0] || '';
-    char.invData.Items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
-    showToast(`Took ${displayName} from storage`);
+    return true;
   }
+  // No stash — item was in storage before this session started.
+  // Safety check: if the same TypeID already appears as IsInInventory it means the store event
+  // was missed earlier (mid-session start) and the export copy is still in the array.
+  // Adding again would create a duplicate, so skip it.
+  const alreadyInInventory = items.some(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
+  if (alreadyInInventory) return false;
+  // Item was genuinely in storage at export time — add a minimal entry now that it's in inventory
+  const displayName = ITEMS[String(typeId)]?.[0] || '';
+  items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
+  showToast(`Took ${displayName} from storage`);
   return true;
 }
 
@@ -3545,12 +3553,14 @@ function parsePlayerLogLines(lines) {
     }
 
     // ProcessAddToStorageVault — confirms the preceding DeleteItem was a storage deposit
-    m = line.match(/LocalPlayer: ProcessAddToStorageVault\(\d+,\s*-?\d+,\s*-?\d+,\s*\w+\((\d+)\)\)/);
+    // Capture TypeName directly from the log line as a fallback so detection works even when
+    // invInstanceMap wasn't populated from the login burst (mid-session start)
+    m = line.match(/LocalPlayer: ProcessAddToStorageVault\(\d+,\s*-?\d+,\s*-?\d+,\s*(\w+)\((\d+)\)\)/);
     if (m) {
-      const instanceId = m[1];
-      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId;
+      const instanceId = m[2];
+      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId ?? ITEMS_BY_INTERNAL_NAME[m[1]];
       if (typeId !== undefined) {
-        delete _pendingDeletes[char][instanceId];
+        if (_pendingDeletes[char]) delete _pendingDeletes[char][instanceId];
         if (sgMoveItemToStorage(char, String(typeId), instanceId)) vendorCount++;
       }
     }
