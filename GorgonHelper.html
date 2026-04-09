@@ -709,6 +709,7 @@ let sellGiftAreaFilter = null;       // Active legend filter: null | 'sell' | 'g
 let sellGiftOpenAreas = new Set();   // Expanded area names in area mode
 let invInstanceMap = {};             // charName → {instanceId(str) → typeId(str)} — live tracking from log
 let _pendingDeletes = {};            // charName → {instanceId → {typeId, ts}} — deleted but reason not yet known
+let _sgItemStash = {};               // charName → {instanceId → full item object} — stashed while in storage
 let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
 
 // ═══════════════════════════════════════════════════════════
@@ -1666,6 +1667,9 @@ function sgMoveItemToStorage(charName, typeId, instanceId) {
   const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
   if (idx < 0) return false;
   const itemName = items[idx].Name || ITEMS[String(typeId)]?.[0] || 'item';
+  // Stash the full item object so all stats are restored if taken back out
+  if (!_sgItemStash[charName]) _sgItemStash[charName] = {};
+  _sgItemStash[charName][instanceId] = items[idx];
   items.splice(idx, 1);
   showToast(`Stored ${itemName}`);
   return true;
@@ -1675,9 +1679,18 @@ function sgMoveItemToStorage(charName, typeId, instanceId) {
 function sgAddInventoryItem(charName, typeId, instanceId) {
   const char = characters.find(c => c.charData?.Character === charName);
   if (!char?.invData?.Items) return false;
-  const displayName = ITEMS[String(typeId)]?.[0] || '';
-  char.invData.Items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
-  showToast(`Took ${displayName} from storage`);
+  // Restore full item data from stash if available, otherwise create a minimal entry
+  const stashed = _sgItemStash[charName]?.[instanceId];
+  if (stashed) {
+    delete _sgItemStash[charName][instanceId];
+    stashed.IsInInventory = true;
+    char.invData.Items.push(stashed);
+    showToast(`Took ${stashed.Name || ITEMS[String(typeId)]?.[0] || 'item'} from storage`);
+  } else {
+    const displayName = ITEMS[String(typeId)]?.[0] || '';
+    char.invData.Items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
+    showToast(`Took ${displayName} from storage`);
+  }
   return true;
 }
 
@@ -3437,7 +3450,7 @@ function parsePlayerLogLines(lines) {
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; updateHeaderChar(); continue; }
+    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; _sgItemStash[m[1]] = {}; updateHeaderChar(); continue; }
 
     // Always track owned pet IDs regardless of char state — so thirsty events later
     // can be matched even if currentLogChar was empty when the seed was planted
