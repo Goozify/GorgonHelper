@@ -5927,7 +5927,7 @@ async function syncFile(key) {
     // Save raw file to Json/ folder so it persists across page reloads
     if (folderHandle) {
       try {
-        const originalsDir = await folderHandle.getDirectoryHandle('Originals', { create: true });
+        const originalsDir = await folderHandle.getDirectoryHandle('Json', { create: true });
         const fh = await originalsDir.getFileHandle(df.file, { create: true });
         const writable = await fh.createWritable();
         await writable.write(JSON.stringify(raw));
