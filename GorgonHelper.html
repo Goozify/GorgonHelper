@@ -1652,8 +1652,14 @@ function sgSelectAreaNpc(npcKey) {
 
 function sgBuildNpcItemMap(items) {
   // Returns { npcKey -> { npcName, area, sell: Set<idx>, gift: Set<idx> } }
+  // Skips marked (important/locked) items and SoulMates NPCs for gifting
+  const char = characters.find(c => c.id === sellGiftCharId);
+  const charName = char?.charData.Character;
+  const logNpcs  = charName ? (playerLogData[charName]?.npcs || {}) : {};
+  const exportNpcs = char?.charData?.NPCs || {};
   const map = {};
   items.forEach((it, idx) => {
+    if (sellGiftMarked.has(it.TypeID)) return; // skip locked items
     const tid = String(it.TypeID);
     const kws = ITEMS[tid]?.[4] || [];
     const rarity = it.Rarity || '';
@@ -1663,6 +1669,10 @@ function sgBuildNpcItemMap(items) {
       map[n.npcKey].sell.add(idx);
     });
     sgGetGiftNpcs(kws, rarity, value).forEach(n => {
+      // Skip SoulMates in area mode — gifting is wasted at max favor
+      const lf = logNpcs[n.npcKey]?.favorLevel;
+      const ef = exportNpcs[n.npcKey]?.Favor;
+      if (lf === 'SoulMates' || ef === 'SoulMates') return;
       if (!map[n.npcKey]) map[n.npcKey] = { npcName: n.name, area: n.area, sell: new Set(), gift: new Set() };
       map[n.npcKey].gift.add(idx);
     });
@@ -1815,9 +1825,9 @@ function renderSellGiftTab() {
       }
       const legend = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;max-width:600px">
         <span style="color:var(--text-dim)">Click a name to highlight items:</span>
-        <span class="sg-chip sg-chip-sell" style="cursor:default">💰 Sell</span>
-        <span class="sg-chip sg-chip-gift" style="cursor:default">🎁 Gift</span>
-        <span class="sg-chip sg-chip-both" style="cursor:default">💰🎁 Both</span>
+        <span class="sg-chip sg-chip-sell" style="cursor:default">Sell</span>
+        <span class="sg-chip sg-chip-gift" style="cursor:default">Gift</span>
+        <span class="sg-chip sg-chip-both" style="cursor:default">Both</span>
       </div>`;
       const areaBlocks = Object.keys(byArea).sort().map(area => {
         const npcs = byArea[area].sort((a,b) => a.npcName.localeCompare(b.npcName));
@@ -1825,9 +1835,9 @@ function renderSellGiftTab() {
         const sellCount = npcs.filter(n => n.sell.size > 0).length;
         const giftCount = npcs.filter(n => n.gift.size > 0).length;
         const summary = [
-          sellCount ? `<span style="color:#c8a830">${sellCount} sell</span>` : '',
-          giftCount ? `<span style="color:#e07080">${giftCount} gift</span>` : ''
-        ].filter(Boolean).join('<span style="color:var(--border)"> · </span>');
+          sellCount ? `${sellCount} sell` : '',
+          giftCount ? `${giftCount} gift` : ''
+        ].filter(Boolean).join(' · ');
         const areaKey = area.replace(/'/g, "\\'");
         const hdr = `<div class="sg-area-hdr${isOpen?' open':''}" onclick="sgToggleArea('${areaKey}')">
           <span>${area} <span style="font-size:9px;color:var(--text-dim);font-family:'Crimson Pro',serif;letter-spacing:0;text-transform:none;margin-left:6px">${summary}</span></span>
@@ -1837,9 +1847,8 @@ function renderSellGiftTab() {
         const chips = npcs.map(n => {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
-          const icon = hasSell && hasGift ? '💰🎁' : hasSell ? '💰' : '🎁';
           const isActive = sellGiftAreaNpcKey === n.npcKey;
-          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')">${icon} ${n.npcName}</span>`;
+          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')">${n.npcName}</span>`;
         }).join('');
         return hdr + `<div class="sg-chip-row">${chips}</div>`;
       }).join('');
