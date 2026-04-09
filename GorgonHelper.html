@@ -702,9 +702,10 @@ let sellGiftCharId = null;       // Selected char ID in sell/gift tool
 let sellGiftSelected = null;     // Currently selected raw item object
 let sellGiftMarked = new Set();  // TypeIDs marked as important/equipped
 let sellGiftSaddlebag = false;   // Toggle: include saddlebag items
-let sellGiftMode = 'area';       // 'item' | 'area'
-let sellGiftAreaNpcKey = null;   // Selected NPC in area mode
-let sellGiftOpenAreas = new Set(); // Expanded area names in area mode
+let sellGiftMode = 'area';           // 'item' | 'area'
+let sellGiftAreaNpcKey = null;       // Selected NPC in area mode
+let sellGiftAreaFilter = null;       // Active legend filter: null | 'sell' | 'gift' | 'both'
+let sellGiftOpenAreas = new Set();   // Expanded area names in area mode
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -1640,6 +1641,13 @@ function sgGetGiftNpcs(keywords, rarity, value) {
 function sgSetMode(mode) {
   sellGiftMode = mode;
   sellGiftAreaNpcKey = null;
+  sellGiftAreaFilter = null;
+  renderSellGiftTab();
+}
+
+function sgSetAreaFilter(f) {
+  sellGiftAreaFilter = sellGiftAreaFilter === f ? null : f;
+  sellGiftAreaNpcKey = null; // clear NPC selection when filter changes
   renderSellGiftTab();
 }
 
@@ -1943,8 +1951,24 @@ function renderSellGiftTab() {
       if (sellGiftMode === 'area') {
         npcItemMap = sgBuildNpcItemMap(rawItems);
         if (sellGiftAreaNpcKey && npcItemMap[sellGiftAreaNpcKey]) {
+          // Specific NPC selected — highlight just that NPC's items
           hlSell = npcItemMap[sellGiftAreaNpcKey].sell;
           hlGift = npcItemMap[sellGiftAreaNpcKey].gift;
+        } else if (sellGiftAreaFilter) {
+          // Legend filter active — aggregate across all matching NPCs
+          const aggSell = new Set(), aggGift = new Set();
+          for (const data of Object.values(npcItemMap)) {
+            const hasSell = data.sell.size > 0, hasGift = data.gift.size > 0;
+            const match = sellGiftAreaFilter === 'sell' ? (hasSell && !hasGift)
+                        : sellGiftAreaFilter === 'gift' ? (!hasSell && hasGift)
+                        : (hasSell && hasGift); // 'both'
+            if (match) {
+              data.sell.forEach(i => aggSell.add(i));
+              data.gift.forEach(i => aggGift.add(i));
+            }
+          }
+          if (aggSell.size) hlSell = aggSell;
+          if (aggGift.size) hlGift = aggGift;
         }
       }
       gridHtml = `<div class="sg-grid">` + rawItems.map((it, idx) => {
@@ -1995,19 +2019,29 @@ function renderSellGiftTab() {
         if (!byArea[area]) byArea[area] = [];
         byArea[area].push({ npcKey, ...data });
       }
+      const _fSell = sellGiftAreaFilter === 'sell', _fGift = sellGiftAreaFilter === 'gift', _fBoth = sellGiftAreaFilter === 'both';
       const legend = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;max-width:600px">
-        <span style="color:var(--text-dim)">Click a name to highlight items:</span>
-        <span class="sg-chip sg-chip-sell" style="cursor:default">Sell</span>
-        <span class="sg-chip sg-chip-gift" style="cursor:default">Gift</span>
-        <span class="sg-chip sg-chip-both" style="cursor:default">Both</span>
+        <span style="color:var(--text-dim)">Filter by type:</span>
+        <span class="sg-chip sg-chip-sell${_fSell?' active':''}" onclick="sgSetAreaFilter('sell')" title="Show sell-only NPCs">Sell</span>
+        <span class="sg-chip sg-chip-gift${_fGift?' active':''}" onclick="sgSetAreaFilter('gift')" title="Show gift-only NPCs">Gift</span>
+        <span class="sg-chip sg-chip-both${_fBoth?' active':''}" onclick="sgSetAreaFilter('both')" title="Show NPCs you can both sell to and gift">Both</span>
       </div>`;
       const sgPinnedNpcs = getPinnedNpcs(sellGiftCharId);
       const areaBlocks = Object.keys(byArea).sort().map(area => {
-        const npcs = byArea[area].sort((a,b) => {
+        const allNpcs = byArea[area].sort((a,b) => {
           const ap = sgPinnedNpcs.has(a.npcKey) ? 0 : 1;
           const bp = sgPinnedNpcs.has(b.npcKey) ? 0 : 1;
           return ap - bp || a.npcName.localeCompare(b.npcName);
         });
+        // Apply legend filter
+        const npcs = sellGiftAreaFilter ? allNpcs.filter(n => {
+          const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
+          if (_fSell) return hasSell && !hasGift;
+          if (_fGift) return !hasSell && hasGift;
+          if (_fBoth) return hasSell && hasGift;
+          return true;
+        }) : allNpcs;
+        if (npcs.length === 0) return ''; // hide area if no NPCs match filter
         const isOpen = sellGiftOpenAreas.has(area);
         const sellCount = npcs.filter(n => n.sell.size > 0).length;
         const giftCount = npcs.filter(n => n.gift.size > 0).length;
