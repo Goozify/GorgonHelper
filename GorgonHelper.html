@@ -586,7 +586,9 @@ let NPCS = {};            // npcKey -> {name, area, areaName, desc, services, po
 let VAULTS = {};          // vaultKey -> {name, area, numSlots, levels, grouping, reqDesc}
 let QUESTS = {};          // internalName -> {name, loc, npc, npcName, objs:[{t,n,d?,tid?}]}
 let LANDMARKS = {};       // areaName -> [{name, type, desc, x, z}]
-let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false };
+let TSYS = {};       // InternalName -> { tierNum: firstEffectDescString }
+let ABILITIES = {};  // InternalName -> { name, iconId }
+let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false, tsys: false, abilities: false };
 let dataVersions = {}; // key -> version string read from _version field
 
 // ── WebSocket bridge (Firefox / non-FSAPI support) ──────────────────────
@@ -699,7 +701,7 @@ let sellGiftCharId = null;       // Selected char ID in sell/gift tool
 let sellGiftSelected = null;     // Currently selected raw item object
 let sellGiftMarked = new Set();  // TypeIDs marked as important/equipped
 let sellGiftSaddlebag = false;   // Toggle: include saddlebag items
-let sellGiftMode = 'item';       // 'item' | 'area'
+let sellGiftMode = 'area';       // 'item' | 'area'
 let sellGiftAreaNpcKey = null;   // Selected NPC in area mode
 let sellGiftOpenAreas = new Set(); // Expanded area names in area mode
 
@@ -1119,6 +1121,8 @@ function applyGameData(key, data) {
   if (key === 'quests')          { QUESTS = data; dataLoaded.quests = true; }
   if (key === 'landmarks')       { LANDMARKS = data; dataLoaded.landmarks = true; }
   if (key === 'npc_training')    { NPC_TRAINING = data; dataLoaded.npc_training = true; }
+  if (key === 'tsys')       { TSYS = data;       dataLoaded.tsys = true; }
+  if (key === 'abilities')  { ABILITIES = data;   dataLoaded.abilities = true; }
   if (data._version) dataVersions[key] = data._version;
   updateSettingsStatus();
 }
@@ -1773,6 +1777,15 @@ function sgToggleSaddlebag() {
 
 // Tooltip for item cells
 let _sgTooltipTimer = null;
+function sgParsePowerDesc(desc, sz) {
+  sz = sz || 16;
+  // Skip pure token-based descriptions like {MOD_SKILL_X}{0.3}
+  if (desc.startsWith('{') && !desc.includes('<icon=')) return null;
+  return desc.replace(/<icon=(\d+)>/g, (_, id) => {
+    const url = getIconUrl(+id) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${id}.png`;
+    return `<img src="${url}" width="${sz}" height="${sz}" style="vertical-align:middle;margin-right:1px;image-rendering:pixelated;border-radius:2px">`;
+  });
+}
 function sgShowTooltip(e, item) {
   clearTimeout(_sgTooltipTimer);
   const old = document.getElementById('sgItemTooltip');
@@ -1782,9 +1795,17 @@ function sgShowTooltip(e, item) {
   const rarity = item.Rarity || '';
   const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
   const rarityColor = rarityColors[rarity] || 'var(--text-dim)';
-  const powers = (item.TSysPowers || []).map(p =>
-    `<div style="font-size:11px;color:var(--text-dim)">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`
-  ).join('');
+  const powers = (item.TSysPowers || []).map(p => {
+    const tierMap = TSYS[p.Power];
+    if (tierMap) {
+      const nums = Object.keys(tierMap).map(Number).sort((a,b)=>a-b);
+      const best = nums.filter(n => n <= p.Tier).pop() || nums[0];
+      const raw = tierMap[best];
+      const parsed = raw ? sgParsePowerDesc(raw, 16) : null;
+      if (parsed) return `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.4">${parsed}</div>`;
+    }
+    return `<div style="font-size:11px;color:var(--text-dim);margin-top:3px">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`;
+  }).join('');
   const desc = iData ? '' : '';
   const tip = document.createElement('div');
   tip.id = 'sgItemTooltip';
@@ -5492,6 +5513,8 @@ const DATA_FILES = [
   // No CDN equivalent — loaded from pg_ files in the root folder
   { key:'landmarks',       file:'landmarks.json',        originals:true,  cdn:'landmarks.json',      label:'Landmarks',       desc:'Portals, pillars, and map points of interest' },
   { key:'npc_training',    file:'npc_training.json',    originals:true,  cdn:null,                  label:'NPC Training',    desc:'Per-recipe favor level and cost for trainers' },
+  { key:'tsys',       file:'tsysclientinfo.json', originals:true, cdn:'tsysclientinfo.json', label:'Power Info',  desc:'Treasure effect descriptions and icons' },
+  { key:'abilities',  file:'abilities.json',      originals:true, cdn:'abilities.json',      label:'Abilities',   desc:'Ability names and icons' },
 ];
 
 // ── Icon system ──
@@ -6037,6 +6060,26 @@ function processCDNData(key, raw) {
         loc: npcData.area || v.DisplayedLocation || '',
         objs,
       };
+    }
+    return out;
+  }
+  if (key === 'tsys') {
+    const out = {};
+    for (const [, v] of Object.entries(raw)) {
+      const name = v.InternalName; if (!name) continue;
+      const tiers = {};
+      for (const [tid, td] of Object.entries(v.Tiers || {})) {
+        const n = parseInt(tid.replace('id_', ''));
+        if (n && td.EffectDescs?.[0]) tiers[n] = td.EffectDescs[0];
+      }
+      out[name] = tiers;
+    }
+    return out;
+  }
+  if (key === 'abilities') {
+    const out = {};
+    for (const [, v] of Object.entries(raw)) {
+      if (v.InternalName) out[v.InternalName] = { name: v.Name || v.InternalName, iconId: v.IconID || 0 };
     }
     return out;
   }
