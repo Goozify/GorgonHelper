@@ -586,8 +586,9 @@ let NPCS = {};            // npcKey -> {name, area, areaName, desc, services, po
 let VAULTS = {};          // vaultKey -> {name, area, numSlots, levels, grouping, reqDesc}
 let QUESTS = {};          // internalName -> {name, loc, npc, npcName, objs:[{t,n,d?,tid?}]}
 let LANDMARKS = {};       // areaName -> [{name, type, desc, x, z}]
-let TSYS = {};       // InternalName -> { tierNum: firstEffectDescString }
+let TSYS = {};       // InternalName -> { tierNum: [EffectDescStrings] }
 let ABILITIES = {};  // InternalName -> { name, iconId }
+let ABILITIES_LOWER = {}; // lowercase InternalName -> { name, iconId }
 let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false, tsys: false, abilities: false };
 let dataVersions = {}; // key -> version string read from _version field
 
@@ -1122,7 +1123,11 @@ function applyGameData(key, data) {
   if (key === 'landmarks')       { LANDMARKS = data; dataLoaded.landmarks = true; }
   if (key === 'npc_training')    { NPC_TRAINING = data; dataLoaded.npc_training = true; }
   if (key === 'tsys')       { TSYS = data;       dataLoaded.tsys = true; }
-  if (key === 'abilities')  { ABILITIES = data;   dataLoaded.abilities = true; }
+  if (key === 'abilities')  {
+    ABILITIES = data; dataLoaded.abilities = true;
+    ABILITIES_LOWER = {};
+    for (const [k, v] of Object.entries(data)) ABILITIES_LOWER[k.toLowerCase()] = v;
+  }
   if (data._version) dataVersions[key] = data._version;
   updateSettingsStatus();
 }
@@ -1808,10 +1813,52 @@ function sgItemCategory(typeId) {
   return null;
 }
 
+function sgDecodeToken(token, iconSz) {
+  iconSz = iconSz || 16;
+  const m = token.match(/^\{([^}]+)\}\{([^}]+)\}(?:\{([^}]+)\})?$/);
+  if (!m) return null;
+  const op = m[1], val = parseFloat(m[2]), extra = m[3];
+  if (isNaN(val)) return null;
+  const pct = v => `+${Math.round(v * 100)}%`;
+  const flat = v => (v >= 0 ? `+${v}` : String(v));
+  function abilIcon(lower) {
+    const info = ABILITIES_LOWER[lower];
+    if (!info?.iconId) return '';
+    const url = getIconUrl(info.iconId) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${info.iconId}.png`;
+    return `<img src="${url}" width="${iconSz}" height="${iconSz}" style="vertical-align:middle;margin-right:3px;image-rendering:pixelated;border-radius:2px">`;
+  }
+  function abilName(lower) {
+    return ABILITIES_LOWER[lower]?.name || lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+  let r;
+  if ((r = op.match(/^MOD_ABILITY_(.+)$/))) {
+    const lower = r[1].toLowerCase();
+    return `${abilIcon(lower)}${abilName(lower)} Damage ${pct(val)}`;
+  }
+  if ((r = op.match(/^ABILITY_RESETTIME_DELTA_(.+)$/))) {
+    const lower = r[1].toLowerCase();
+    return `${abilIcon(lower)}${abilName(lower)} resets ${Math.abs(val)}s faster`;
+  }
+  if ((r = op.match(/^BOOST_SKILL_(.+)$/))) {
+    const name = r[1].charAt(0) + r[1].slice(1).toLowerCase();
+    return `${name} ${flat(val)}`;
+  }
+  if ((r = op.match(/^MOD_SKILL_(.+)$/))) {
+    const name = r[1].charAt(0) + r[1].slice(1).toLowerCase();
+    return `${name} Damage ${pct(val)}`;
+  }
+  if (op.match(/^MOD_CRITICAL_HIT_DAMAGE/)) {
+    return `Crit Damage ${pct(val)}${extra ? ` (${extra})` : ''}`;
+  }
+  if ((r = op.match(/^DELTA_(.+)$/))) {
+    const stat = r[1].replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `${stat} ${flat(val)}`;
+  }
+  return null;
+}
 function sgParsePowerDesc(desc, sz) {
   sz = sz || 16;
-  // Skip pure token-based descriptions like {MOD_SKILL_X}{0.3}
-  if (desc.startsWith('{') && !desc.includes('<icon=')) return null;
+  if (desc.startsWith('{') && !desc.includes('<icon=')) return sgDecodeToken(desc, sz);
   return desc.replace(/<icon=(\d+)>/g, (_, id) => {
     const url = getIconUrl(+id) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${id}.png`;
     return `<img src="${url}" width="${sz}" height="${sz}" style="vertical-align:middle;margin-right:1px;image-rendering:pixelated;border-radius:2px">`;
@@ -1832,9 +1879,14 @@ function sgShowTooltip(e, item) {
     if (tierMap) {
       const nums = Object.keys(tierMap).map(Number).sort((a,b)=>a-b);
       const best = nums.filter(n => n <= p.Tier).pop() || nums[0];
-      const raw = tierMap[best];
-      const parsed = raw ? sgParsePowerDesc(raw, 16) : null;
-      if (parsed) return `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.4">${parsed}</div>`;
+      const descs = tierMap[best];
+      if (Array.isArray(descs) && descs.length) {
+        const lines = descs.map(d => {
+          const parsed = sgParsePowerDesc(d, 16);
+          return parsed ? `<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);margin-top:3px;line-height:1.4">${parsed}</div>` : null;
+        }).filter(Boolean);
+        if (lines.length) return lines.join('');
+      }
     }
     return `<div style="font-size:11px;color:var(--text-dim);margin-top:3px">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`;
   }).join('');
@@ -6102,7 +6154,7 @@ function processCDNData(key, raw) {
       const tiers = {};
       for (const [tid, td] of Object.entries(v.Tiers || {})) {
         const n = parseInt(tid.replace('id_', ''));
-        if (n && td.EffectDescs?.[0]) tiers[n] = td.EffectDescs[0];
+        if (n && td.EffectDescs?.length) tiers[n] = td.EffectDescs;
       }
       out[name] = tiers;
     }
