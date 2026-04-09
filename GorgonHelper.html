@@ -2001,8 +2001,13 @@ function renderSellGiftTab() {
         <span class="sg-chip sg-chip-gift" style="cursor:default">Gift</span>
         <span class="sg-chip sg-chip-both" style="cursor:default">Both</span>
       </div>`;
+      const sgPinnedNpcs = getPinnedNpcs(sellGiftCharId);
       const areaBlocks = Object.keys(byArea).sort().map(area => {
-        const npcs = byArea[area].sort((a,b) => a.npcName.localeCompare(b.npcName));
+        const npcs = byArea[area].sort((a,b) => {
+          const ap = sgPinnedNpcs.has(a.npcKey) ? 0 : 1;
+          const bp = sgPinnedNpcs.has(b.npcKey) ? 0 : 1;
+          return ap - bp || a.npcName.localeCompare(b.npcName);
+        });
         const isOpen = sellGiftOpenAreas.has(area);
         const sellCount = npcs.filter(n => n.sell.size > 0).length;
         const giftCount = npcs.filter(n => n.gift.size > 0).length;
@@ -2020,7 +2025,10 @@ function renderSellGiftTab() {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
           const isActive = sellGiftAreaNpcKey === n.npcKey;
-          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')" onmouseenter="sgShowNpcTooltip(event,'${n.npcKey}')" onmouseleave="sgHideNpcTooltip()">${n.npcName}</span>`;
+          const starHtml = sgPinnedNpcs.has(n.npcKey)
+            ? `<span style="color:var(--gold);font-size:10px;line-height:1;margin-right:1px">★</span>`
+            : '';
+          return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')" onmouseenter="sgShowNpcTooltip(event,'${n.npcKey}')" onmouseleave="sgHideNpcTooltip()">${starHtml}${n.npcName}</span>`;
         }).join('');
         return hdr + `<div class="sg-chip-row">${chips}</div>`;
       }).join('');
