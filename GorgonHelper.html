@@ -175,9 +175,10 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-mode-btn{padding:4px 13px;font-size:11px;cursor:pointer;border:none;background:var(--bg3);color:var(--text-dim);transition:background .1s,color .1s;font-family:'Crimson Pro',serif;letter-spacing:.03em}
 .sg-mode-btn.active{background:var(--gold-dim);color:var(--bg)}
 .sg-area-panel{padding:10px 14px;overflow-y:auto;flex:1}
-.sg-area-hdr{font-family:'Cinzel',serif;font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;margin:14px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--border);max-width:600px}
-.sg-area-hdr:first-child{margin-top:2px}
-.sg-chip-row{display:flex;flex-wrap:wrap;gap:5px;max-width:600px;margin-bottom:4px}
+.sg-area-hdr{font-family:'Cinzel',serif;font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;margin:6px 0 0;padding:6px 8px;border:1px solid var(--border);border-radius:4px;max-width:600px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;transition:background .1s}
+.sg-area-hdr:hover{background:var(--bg3);color:var(--text)}
+.sg-area-hdr.open{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent}
+.sg-chip-row{display:flex;flex-wrap:wrap;gap:5px;max-width:600px;padding:6px 8px;border:1px solid var(--border);border-top:none;border-bottom-left-radius:4px;border-bottom-right-radius:4px;margin-bottom:2px}
 .sg-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid transparent;transition:opacity .1s,border-color .1s;user-select:none;font-family:'Crimson Pro',serif}
 .sg-chip:hover{opacity:.85}
 .sg-chip.active{outline:2px solid var(--text);outline-offset:1px}
@@ -700,6 +701,7 @@ let sellGiftMarked = new Set();  // TypeIDs marked as important/equipped
 let sellGiftSaddlebag = false;   // Toggle: include saddlebag items
 let sellGiftMode = 'item';       // 'item' | 'area'
 let sellGiftAreaNpcKey = null;   // Selected NPC in area mode
+let sellGiftOpenAreas = new Set(); // Expanded area names in area mode
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -1632,6 +1634,17 @@ function sgSetMode(mode) {
   renderSellGiftTab();
 }
 
+function sgToggleArea(area) {
+  if (sellGiftOpenAreas.has(area)) {
+    sellGiftOpenAreas.delete(area);
+    // Deselect NPC if it was inside this area
+    if (sellGiftAreaNpcKey) renderSellGiftTab();
+  } else {
+    sellGiftOpenAreas.add(area);
+  }
+  renderSellGiftTab();
+}
+
 function sgSelectAreaNpc(npcKey) {
   sellGiftAreaNpcKey = sellGiftAreaNpcKey === npcKey ? null : npcKey;
   renderSellGiftTab();
@@ -1808,6 +1821,19 @@ function renderSellGiftTab() {
       </div>`;
       const areaBlocks = Object.keys(byArea).sort().map(area => {
         const npcs = byArea[area].sort((a,b) => a.npcName.localeCompare(b.npcName));
+        const isOpen = sellGiftOpenAreas.has(area);
+        const sellCount = npcs.filter(n => n.sell.size > 0).length;
+        const giftCount = npcs.filter(n => n.gift.size > 0).length;
+        const summary = [
+          sellCount ? `<span style="color:#c8a830">${sellCount} sell</span>` : '',
+          giftCount ? `<span style="color:#e07080">${giftCount} gift</span>` : ''
+        ].filter(Boolean).join('<span style="color:var(--border)"> · </span>');
+        const areaKey = area.replace(/'/g, "\\'");
+        const hdr = `<div class="sg-area-hdr${isOpen?' open':''}" onclick="sgToggleArea('${areaKey}')">
+          <span>${area} <span style="font-size:9px;color:var(--text-dim);font-family:'Crimson Pro',serif;letter-spacing:0;text-transform:none;margin-left:6px">${summary}</span></span>
+          <span style="font-size:10px;opacity:.6">${isOpen ? '▲' : '▼'}</span>
+        </div>`;
+        if (!isOpen) return hdr;
         const chips = npcs.map(n => {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
@@ -1815,7 +1841,7 @@ function renderSellGiftTab() {
           const isActive = sellGiftAreaNpcKey === n.npcKey;
           return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')">${icon} ${n.npcName}</span>`;
         }).join('');
-        return `<div class="sg-area-hdr">${area}</div><div class="sg-chip-row">${chips}</div>`;
+        return hdr + `<div class="sg-chip-row">${chips}</div>`;
       }).join('');
       npcHtml = legend + areaBlocks;
     }
