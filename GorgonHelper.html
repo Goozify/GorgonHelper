@@ -711,6 +711,7 @@ let invInstanceMap = {};             // charName → {instanceId(str) → typeId
 let _pendingDeletes = {};            // charName → {instanceId → {typeId, ts}} — deleted but reason not yet known
 let _sgItemStash = {};               // charName → {instanceId → full item object} — stashed while in storage
 let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
+let _sgPendingSaleGold = 0;          // accumulated item Value to deduct once VendorUpdateAvailableGold fires
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -1652,6 +1653,7 @@ function sgRemoveSoldItem(charName, typeId, instanceId) {
   const idx = items.findIndex(it => String(it.TypeID) === String(typeId) && it.IsInInventory === true);
   if (idx < 0) return false;
   const itemName = items[idx].Name || ITEMS[String(typeId)]?.[0] || 'item';
+  _sgPendingSaleGold += items[idx].Value || 0; // accumulate for gold deduction on VendorUpdateAvailableGold
   items.splice(idx, 1);
   const npcName = _sgLastVendorKey ? (NPCS[_sgLastVendorKey]?.name || _sgLastVendorKey.replace('NPC_', '')) : 'vendor';
   showToast(`Sold ${itemName} → ${npcName}`);
@@ -3496,7 +3498,8 @@ function parsePlayerLogLines(lines) {
     if (m) {
       const npcKey = d.idMap[m[1]];
       if (npcKey) {
-        _sgLastVendorKey = npcKey; // set here so gold updates work even if VendorAddItem lookup fails
+        _sgLastVendorKey = npcKey;  // set here so gold updates work even if VendorAddItem lookup fails
+        _sgPendingSaleGold = 0;     // new vendor session — reset accumulator
         const prevGold = d.npcs[npcKey]?.currentGold;
         d.npcs[npcKey] = { ...(d.npcs[npcKey] || {}), currentGold: +m[3], maxGold: +m[5], resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
         if (prevGold !== +m[3]) {
@@ -3544,13 +3547,18 @@ function parsePlayerLogLines(lines) {
       }
     }
 
-    // ProcessVendorUpdateAvailableGold — update vendor's gold after sale
-    m = line.match(/LocalPlayer: ProcessVendorUpdateAvailableGold\(\d+,\s*\d+,\s*(\d+)\)/);
-    if (m && _sgLastVendorKey) {
-      if (!d.npcs[_sgLastVendorKey]) d.npcs[_sgLastVendorKey] = { loggedAt: Date.now() };
-      d.npcs[_sgLastVendorKey].currentGold = parseInt(m[1]);
-      d.npcs[_sgLastVendorKey].loggedAt = Date.now();
-      vendorCount++;
+    // ProcessVendorUpdateAvailableGold — fires after each sale; use as trigger to apply deduction.
+    // The log parameters don't contain the new current gold reliably, so we deduct the
+    // accumulated item Value from our stored gold instead.
+    m = line.match(/LocalPlayer: ProcessVendorUpdateAvailableGold\(/);
+    if (m && _sgLastVendorKey && _sgPendingSaleGold > 0) {
+      const npcData = d.npcs[_sgLastVendorKey];
+      if (npcData?.currentGold != null) {
+        npcData.currentGold = Math.max(0, npcData.currentGold - _sgPendingSaleGold);
+        npcData.loggedAt = Date.now();
+        vendorCount++;
+      }
+      _sgPendingSaleGold = 0;
     }
 
     // ProcessAddToStorageVault — confirms the preceding DeleteItem was a storage deposit
