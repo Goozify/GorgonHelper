@@ -700,9 +700,12 @@ class SurveyServer:
             self.map_overlay.add_coord_pin(loc.east_absolute, loc.south_absolute)
             self._current_scan_slot += 1
             self.inv_overlay.set_current_slot(self._current_scan_slot)
-            # Wake up auto-use loop if it's waiting for this detection
+            # Wake both events so _check_pin_after_click / _auto_use_surveys
+            # don't wait 8 s for OCR when chat already confirmed the detection.
             if self._auto_use_event and not self._auto_use_event.is_set():
                 self._auto_use_event.set()
+            if self._auto_use_pin_event and not self._auto_use_pin_event.is_set():
+                self._auto_use_pin_event.set()
             await self.broadcast({
                 "type": "survey_detected",
                 "location": _loc_to_dict(loc),
@@ -726,6 +729,10 @@ class SurveyServer:
                 self.inv_overlay.set_current_slot(self._current_scan_slot)
             if self._auto_use_event and not self._auto_use_event.is_set():
                 self._auto_use_event.set()
+            # Wake pin event too — duplicate still means the item was used,
+            # no need to wait 8 s for OCR confirmation.
+            if self._auto_use_pin_event and not self._auto_use_pin_event.is_set():
+                self._auto_use_pin_event.set()
             await self.broadcast({
                 "type": "survey_duplicate",
                 "east": east, "south": south,
@@ -1057,14 +1064,22 @@ class SurveyServer:
             log.debug("SINGLE-USE  circle pin detected for slot %d", slot)
         except asyncio.TimeoutError:
             log.warning("SINGLE-USE  pin timeout at slot %d — map OCR didn't detect circle", slot)
-            self._current_scan_slot = slot
-            self._error_recovery_slot = slot
-            self.inv_overlay.set_current_slot(slot)
-            self.inv_overlay.set_error_slot(slot)
-            await self.broadcast({
-                "type": "status",
-                "message": f"⚠ Map circle not detected at slot {slot + 1} — check map region or wait for it to appear.",
-            })
+            # Guard: only mark error if slot hasn't already been advanced by chat
+            # detection.  Without this, a stale timeout could stomp _current_scan_slot
+            # backward (e.g. surveys used rapidly — chat advances slot to 5, then 5
+            # stale OCR timeouts fire and revert it to 0, 1, 2, 3, 4 in sequence).
+            if self._current_scan_slot <= slot:
+                self._current_scan_slot = slot
+                self._error_recovery_slot = slot
+                self.inv_overlay.set_current_slot(slot)
+                self.inv_overlay.set_error_slot(slot)
+                await self.broadcast({
+                    "type": "status",
+                    "message": f"⚠ Map circle not detected at slot {slot + 1} — check map region or wait for it to appear.",
+                })
+            else:
+                log.debug("SINGLE-USE  pin timeout for slot %d ignored — slot already advanced to %d via chat",
+                          slot, self._current_scan_slot)
         finally:
             self._auto_use_pin_event = None
 
@@ -1115,17 +1130,22 @@ class SurveyServer:
                         log.debug("AUTO-USE  pin detected for slot %d", slot)
                     except asyncio.TimeoutError:
                         log.warning("AUTO-USE  pin timeout at slot %d — map OCR didn't detect circle", slot)
-                        # Revert scan slot so yellow highlight stays on the failed slot
-                        self._current_scan_slot = slot
-                        self._error_recovery_slot = slot
-                        self.inv_overlay.set_current_slot(slot)
-                        self.inv_overlay.set_error_slot(slot)
-                        await self.broadcast({
-                            "type": "status",
-                            "message": f"⚠ Map circle not detected at slot {slot + 1} — auto-use paused. "
-                                       f"Wait for the circle to appear, then press the hotkey to continue.",
-                        })
-                        break
+                        # Guard: if chat already advanced the slot, the OCR timeout is
+                        # stale — don't regress the slot counter backward.
+                        if self._current_scan_slot <= slot:
+                            self._current_scan_slot = slot
+                            self._error_recovery_slot = slot
+                            self.inv_overlay.set_current_slot(slot)
+                            self.inv_overlay.set_error_slot(slot)
+                            await self.broadcast({
+                                "type": "status",
+                                "message": f"⚠ Map circle not detected at slot {slot + 1} — auto-use paused. "
+                                           f"Wait for the circle to appear, then press the hotkey to continue.",
+                            })
+                            break
+                        else:
+                            log.debug("AUTO-USE  pin timeout for slot %d ignored — slot already at %d via chat",
+                                      slot, self._current_scan_slot)
 
                 count += 1
                 await asyncio.sleep(INTER_DELAY)

@@ -247,8 +247,22 @@ class GameMapOverlay(QWidget):
         self._cal_offset_y = px_cy - m_cs * scale
 
     def get_player_pos(self):
-        """Return current player (east, south) in game meters, or None."""
-        if self._cal_scale <= 0 or self._arrow_px is None:
+        """Return current player (east, south) in game meters, or None.
+
+        Prefers area calibration over the old auto-calibrated linear transform.
+        """
+        if self._arrow_px is None:
+            return None
+        # Priority 1: area calibration (from calibration JSON files)
+        if self._cal_data is not None and self._map_w > 0 and self._map_h > 0:
+            cal = self._cal_data
+            u = self._arrow_px / self._map_w
+            v = self._arrow_py / self._map_h
+            east  = cal['x_left'] + u * (cal['x_right']  - cal['x_left'])
+            south = cal['z_top']  - v * (cal['z_top']    - cal['z_bottom'])
+            return east, south
+        # Fallback: auto-calibrated linear transform
+        if self._cal_scale <= 0:
             return None
         east  = (self._arrow_px - self._cal_offset_x) / self._cal_scale
         south = (self._arrow_py - self._cal_offset_y) / self._cal_scale
