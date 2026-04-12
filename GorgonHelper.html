@@ -570,6 +570,36 @@ let surveyConfig = {};
 let surveyPlayerMeters = null;
 let surveyCirclePins = [];
 let surveyCompletion = null; // {total, elapsed_seconds, loot} — set on survey_all_complete
+let surveyMapAreaOverride = null; // null = follow surveyActiveArea; else manual override
+let _surveyMapImgCache = {};      // area → HTMLImageElement (loaded)
+
+// Map calibration data: merged (manual overrides wiki).
+// Formula: u=(east-x_left)/(x_right-x_left), v=(z_top-south)/(z_top-z_bottom)
+// Image path: /Maps/Map_{area}.jpg  (some areas use a different filename — see SURVEY_MAP_FILE)
+const SURVEY_CAL = {
+  AreaDesert1:    {x_left:-1533.9, x_right:638.6,   z_top:751.9,   z_bottom:-1855.2},
+  AreaEltibule:   {x_left:289.2,   x_right:2772.2,  z_top:97.9,    z_bottom:3124.4},
+  AreaFaeRealm1:  {x_left:339.8,   x_right:2656.8,  z_top:3122.7,  z_bottom:74.1},
+  AreaGazluk:     {x_left:-2389.3, x_right:1941.9,  z_top:2621.5,  z_bottom:-2396.9},
+  AreaKurMountains:{x_left:3847.5, x_right:253.0,   z_top:251.7,   z_bottom:3847.7},
+  AreaPovus:      {x_left:-2.9,    x_right:2839.3,  z_top:2686.5,  z_bottom:100.0},
+  AreaRahu:       {x_left:13.9,    x_right:1685.4,  z_top:610.9,   z_bottom:-1235.9},
+  AreaSerbule:    {x_left:193.2,   x_right:2575.85, z_top:2761.56, z_bottom:273.06},
+  AreaSerbule2:   {x_left:86.8,    x_right:2438.9,  z_top:3073.0,  z_bottom:211.9},
+  AreaStatehelm:  {x_left:-199.0,  x_right:1165.0,  z_top:1822.2,  z_bottom:-15.5},
+  AreaSunVale:    {x_left:-1879.7, x_right:1909.6,  z_top:1916.3,  z_bottom:-1719.3},
+};
+// Display names for area dropdown
+const SURVEY_AREA_NAMES = {
+  AreaDesert1:'Desert', AreaEltibule:'Eltibule', AreaFaeRealm1:'Fae Realm',
+  AreaGazluk:'Gazluk', AreaKurMountains:'Kur Mountains', AreaPovus:'Povus',
+  AreaRahu:'Rahu', AreaSerbule:'Serbule', AreaSerbule2:'Serbule Hills',
+  AreaStatehelm:'Statehelm', AreaSunVale:'Sun Vale',
+};
+// Map file name overrides (when filename != Map_{area}.jpg)
+const SURVEY_MAP_FILE = {
+  AreaPovus: 'Map_Povus.jpg',
+};
 
 // Game data (loaded from files)
 const APP_VERSION = '0.1.18';
@@ -1117,7 +1147,7 @@ function applyGameData(key, data) {
     NPC_RECIPES_MAP = {};
     for (const [recipeKey, entries] of Object.entries(data)) {
       for (const e of entries) {
-        if (e.t === 'Training' && e.npc) {
+        if (e.t === 'Training' && e.npc && e.npc !== 'AdminTestNpc') {
           if (!NPC_RECIPES_MAP[e.npc]) NPC_RECIPES_MAP[e.npc] = [];
           NPC_RECIPES_MAP[e.npc].push(recipeKey);
         }
@@ -1568,7 +1598,7 @@ function renderCharTabs() {
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
 }
 
-function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; questLocationFilter = ''; questSearchQ = ''; questCompleteFilter = ''; completedWOSearch = ''; renderAll(); }
+function setActiveChar(id) { activeCharId = id; activeVaultFilter = null; activeTownFilter = ''; vaultAreaFilter = ''; favorAreaFilter = ''; favorShowUnmet = false; questLocationFilter = ''; questSearchQ = ''; questCompleteFilter = ''; completedWOSearch = ''; renderAll(); }
 function removeChar(id, e) {
   e.stopPropagation();
   if (characters.length===1) { showToast("Can't remove last character"); return; }
@@ -1622,7 +1652,7 @@ function sgGetGiftNpcs(keywords, rarity, value) {
   const results = [];
   for (const [npcKey, npc] of Object.entries(NPCS)) {
     const logFavor    = logNpcs[npcKey]?.favorLevel;
-    const exportFavor = charExportNpcs[npcKey]?.Favor;
+    const exportFavor = charExportNpcs[npcKey]?.FavorLevel;
     const favor       = logFavor || exportFavor || null;
     let bestDesire = null, bestPrefName = '';
     for (const pref of (npc.prefs || [])) {
@@ -1834,7 +1864,7 @@ function sgBuildNpcItemMap(items) {
     sgGetGiftNpcs(kws, rarity, value).forEach(n => {
       // Skip SoulMates in area mode — gifting is wasted at max favor
       const lf = logNpcs[n.npcKey]?.favorLevel;
-      const ef = exportNpcs[n.npcKey]?.Favor;
+      const ef = exportNpcs[n.npcKey]?.FavorLevel;
       if (lf === 'SoulMates' || ef === 'SoulMates') return;
       if (!map[n.npcKey]) map[n.npcKey] = { npcName: n.name, area: n.area, sell: new Set(), gift: new Set() };
       map[n.npcKey].gift.add(idx);
@@ -2206,7 +2236,6 @@ function renderSellGiftTab() {
     }
   } else if (sellGiftMode === 'item') {
     npcHtml = `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
-      <div style="font-size:32px;margin-bottom:10px">👆</div>
       Click an item to see which NPCs will buy or accept it as a gift
     </div>`;
   }
@@ -3272,6 +3301,12 @@ function setFavorAreaFilter(area) {
 
 function onFavorSearch(v) { favorSearchQ = v; renderFavorsTab(); }
 function clearFavorSearch() { favorSearchQ = ''; renderFavorsTab(); }
+function toggleFavorShowUnmet() {
+  favorShowUnmet = !favorShowUnmet;
+  const ac = document.getElementById('appContent');
+  if (ac) ac.innerHTML = '';
+  renderFavorsTab();
+}
 
 function toggleFavorNpc(key) {
   if (expandedFavorNpcs.has(key)) expandedFavorNpcs.delete(key);
@@ -4032,8 +4067,23 @@ function renderFavorsTab() {
     return;
   }
 
-  // Build merged NPC list: npcKey -> { name, area, desc, chars: {charId: favorLevel}, logOnly? }
+  // Build merged NPC list: npcKey -> { name, area, desc, chars: {charId: favorLevel}, logOnly?, unmet? }
   const npcMap = {};
+
+  // Step 1: all known NPCs from game data (baseline — may be unmet)
+  for (const [npcKey, info] of Object.entries(NPCS)) {
+    npcMap[npcKey] = {
+      key: npcKey,
+      name: info.name || npcKey.replace('NPC_','').replace(/_/g,' '),
+      area: info.area || '',
+      desc: info.desc || '',
+      prefs: info.prefs || [],
+      chars: {},
+      unmet: true,
+    };
+  }
+
+  // Step 2: overlay character export favor data (clears unmet flag)
   for (const char of chars) {
     for (const [npcKey, npcData] of Object.entries(char.charData.NPCs || {})) {
       const favor = npcData.FavorLevel;
@@ -4045,70 +4095,48 @@ function renderFavorsTab() {
           area: info?.area || '',
           desc: info?.desc || '',
           prefs: info?.prefs || [],
-          chars: {}
+          chars: {},
         };
       }
       npcMap[npcKey].chars[char.id] = favor;
+      npcMap[npcKey].unmet = false;
     }
   }
 
-  // Add log-only NPCs (seen in player.log but not in character export)
+  // Step 3: add log-only NPCs (vendor data in player.log but not in character export)
   const singleCharName = !showAll && chars.length === 1 ? chars[0].charData?.Character : null;
-  if (singleCharName && playerLogData[singleCharName]) {
-    for (const npcKey of Object.keys(playerLogData[singleCharName].npcs)) {
+  const logCharNames = showAll ? chars.map(c => c.charData?.Character).filter(Boolean) : (singleCharName ? [singleCharName] : []);
+  for (const cn of logCharNames) {
+    if (!playerLogData[cn]) continue;
+    for (const npcKey of Object.keys(playerLogData[cn].npcs)) {
       if (!npcMap[npcKey]) {
         const info = NPCS[npcKey];
-        npcMap[npcKey] = {
-          key: npcKey,
-          name: info?.name || npcKey.replace('NPC_','').replace(/_/g,' '),
-          area: info?.area || '',
-          desc: info?.desc || '',
-          prefs: info?.prefs || [],
-          chars: {},
-          logOnly: true
-        };
+        npcMap[npcKey] = { key: npcKey, name: info?.name || npcKey.replace('NPC_','').replace(/_/g,' '), area: info?.area || '', desc: info?.desc || '', prefs: info?.prefs || [], chars: {} };
       }
-    }
-  }
-  // In All Characters mode, add log-only NPCs from all chars
-  if (showAll) {
-    for (const char of chars) {
-      const cn = char.charData?.Character;
-      if (!cn || !playerLogData[cn]) continue;
-      for (const npcKey of Object.keys(playerLogData[cn].npcs)) {
-        if (!npcMap[npcKey]) {
-          const info = NPCS[npcKey];
-          npcMap[npcKey] = {
-            key: npcKey,
-            name: info?.name || npcKey.replace('NPC_','').replace(/_/g,' '),
-            area: info?.area || '',
-            desc: info?.desc || '',
-            prefs: info?.prefs || [],
-            chars: {},
-            logOnly: true
-          };
-        }
-      }
+      if (npcMap[npcKey].unmet) { npcMap[npcKey].logOnly = true; npcMap[npcKey].unmet = false; }
     }
   }
 
-  // Collect all areas
+  // Area chips: only count met NPCs (keeps the list short regardless of total NPC count)
   const areaSet = new Map();
   for (const npc of Object.values(npcMap)) {
-    if (npc.area) areaSet.set(npc.area, (areaSet.get(npc.area)||0)+1);
+    if (npc.area && !npc.unmet) areaSet.set(npc.area, (areaSet.get(npc.area)||0)+1);
   }
   const sortedAreas = [...areaSet.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
 
   // Filter
+  const favorRank = f => FAVOR_LEVELS_ALL.indexOf(f);
   let npcs = Object.values(npcMap);
+  if (!favorShowUnmet) npcs = npcs.filter(n => !n.unmet);
   if (favorAreaFilter) npcs = npcs.filter(n => n.area === favorAreaFilter);
   if (favorSearchQ) {
     const q = favorSearchQ.toLowerCase();
     npcs = npcs.filter(n => n.name.toLowerCase().includes(q) || n.area.toLowerCase().includes(q));
   }
-  // Sort: log-only NPCs last, then by highest favor (across chars) desc, then name
-  const favorRank = f => FAVOR_LEVELS_ALL.indexOf(f);
+  // Sort: log-only last among met, unmet always last; within met sort by favor rank desc then name
   npcs.sort((a, b) => {
+    const aUnmet = !!a.unmet, bUnmet = !!b.unmet;
+    if (aUnmet !== bUnmet) return aUnmet ? 1 : -1;
     if (a.logOnly !== b.logOnly) return a.logOnly ? 1 : -1;
     const aVals = Object.values(a.chars);
     const bVals = Object.values(b.chars);
@@ -4133,18 +4161,20 @@ function renderFavorsTab() {
   const pinnedNpcs = showAll ? new Set() : getPinnedNpcs(activeCharId);
 
   const buildRow = (npc, charList, isAll) => {
-    const favorCell = isAll
-      ? `<td class="favor-bar-cell">${charList.map(c => {
-          const favor = npc.chars[c.id];
-          if (!favor) return '';
-          return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
-            <span style="font-size:10px;color:var(--text-dim);min-width:70px;flex-shrink:0">${c.charData.Character}</span>
-            ${renderFavorCell(favor, playerLogData[c.charData?.Character]?.npcs[npc.key]?.exactFavor)}
-          </div>`;
-        }).filter(Boolean).join('')}</td>`
-      : npc.logOnly
-        ? `<td class="favor-bar-cell"><span style="font-size:11px;color:var(--text-dim)">—</span></td>`
-        : `<td class="favor-bar-cell">${renderFavorCell(Object.values(npc.chars)[0] || 'Neutral', singleCharName && playerLogData[singleCharName]?.npcs[npc.key]?.exactFavor)}</td>`;
+    const favorCell = npc.unmet
+      ? `<td class="favor-bar-cell"><span style="font-size:11px;color:var(--text-dim);opacity:.5">Not met</span></td>`
+      : isAll
+        ? `<td class="favor-bar-cell">${charList.map(c => {
+            const favor = npc.chars[c.id];
+            if (!favor) return '';
+            return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+              <span style="font-size:10px;color:var(--text-dim);min-width:70px;flex-shrink:0">${c.charData.Character}</span>
+              ${renderFavorCell(favor, playerLogData[c.charData?.Character]?.npcs[npc.key]?.exactFavor)}
+            </div>`;
+          }).filter(Boolean).join('')}</td>`
+        : npc.logOnly
+          ? `<td class="favor-bar-cell"><span style="font-size:11px;color:var(--text-dim)">—</span></td>`
+          : `<td class="favor-bar-cell">${renderFavorCell(Object.values(npc.chars)[0] || 'Neutral', singleCharName && playerLogData[singleCharName]?.npcs[npc.key]?.exactFavor)}</td>`;
 
     const safeKey = npc.key.replace(/'/g,"\\'");
     const hasTraining = (dataLoaded.npc_training && NPC_TRAINING[npc.key]?.length > 0)
@@ -4169,10 +4199,11 @@ function renderFavorsTab() {
     const logOnlyBadge = npc.logOnly ? `<span style="font-size:9px;color:var(--text-dim);margin-left:5px;border:1px solid var(--border);border-radius:3px;padding:0 3px">vendor</span>` : '';
 
     const isPinned = pinnedNpcs.has(npc.key);
-    const pinBtn = !isAll ? `<span class="favor-pin-btn${isPinned?' pinned':''}" title="${isPinned?'Unpin':'Pin'} NPC"
+    const pinBtn = (!isAll && !npc.unmet) ? `<span class="favor-pin-btn${isPinned?' pinned':''}" title="${isPinned?'Unpin':'Pin'} NPC"
       onclick="event.stopPropagation();togglePinnedNpc('${activeCharId}','${safeKey}')">${isPinned?'★':'☆'}</span>` : '';
 
-    return `<tr class="favor-row" style="${hasExpand ? 'cursor:pointer' : ''}"
+    const rowOpacity = npc.unmet ? ' opacity:.45' : '';
+    return `<tr class="favor-row" style="${hasExpand ? 'cursor:pointer;' : ''}${rowOpacity}"
       onclick="${hasExpand ? `toggleFavorNpc('${safeKey}')` : ''}"
       onmouseenter="showNpcPrefTooltip('${safeKey}', event)"
       onmouseleave="hideNpcPrefTooltip()">
@@ -4188,9 +4219,16 @@ function renderFavorsTab() {
   const makeTable = (rowsHtml) => `<table class="favor-table">${thead}<tbody>${rowsHtml}</tbody></table>`;
 
   const buildContent = (charList, isAll) => {
+    const metNpcs  = npcs.filter(n => !n.unmet);
+    const unmetNpcs = npcs.filter(n => n.unmet);
+    const unmetSection = unmetNpcs.length
+      ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px;opacity:.6">Not Yet Met (${unmetNpcs.length})</div>
+         ${makeTable(unmetNpcs.map(n => buildRow(n, charList, isAll)).join(''))}`
+      : '';
+
     if (!isAll && pinnedNpcs.size > 0) {
-      const pinned = npcs.filter(n => pinnedNpcs.has(n.key));
-      const rest   = npcs.filter(n => !pinnedNpcs.has(n.key));
+      const pinned = metNpcs.filter(n => pinnedNpcs.has(n.key));
+      const rest   = metNpcs.filter(n => !pinnedNpcs.has(n.key));
       const pinnedSection = pinned.length
         ? `<div class="panel-label" style="margin-bottom:6px">Pinned NPCs</div>
           ${makeTable(pinned.map(n => buildRow(n, charList, isAll)).join(''))}`
@@ -4199,9 +4237,10 @@ function renderFavorsTab() {
         ? `${pinned.length ? `<div class="panel-label" style="margin-top:18px;margin-bottom:6px">NPCs</div>` : ''}
           ${makeTable(rest.map(n => buildRow(n, charList, isAll)).join(''))}`
         : '';
-      return pinnedSection + restSection;
+      return pinnedSection + restSection + unmetSection;
     }
-    return makeTable(npcs.map(n => buildRow(n, charList, isAll)).join(''));
+    const metSection = metNpcs.length ? makeTable(metNpcs.map(n => buildRow(n, charList, isAll)).join('')) : '';
+    return metSection + unmetSection;
   };
 
   _lastFavorRows = buildContent;
@@ -4214,7 +4253,7 @@ function renderFavorsTab() {
       ? `<div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div>`
       : content;
     const countEl = document.getElementById('favorCount');
-    if (countEl) countEl.textContent = npcs.length;
+    if (countEl) countEl.textContent = npcs.filter(n=>!n.unmet).length;
     const clearBtn = document.getElementById('favorClearBtn');
     if (clearBtn) clearBtn.className = `search-clear ${favorSearchQ ? 'visible' : ''}`;
     return;
@@ -4236,8 +4275,9 @@ function renderFavorsTab() {
       <span class="filter-divider"></span>
       ${areaChips}
     </div>
-    <div id="favorCountRow" style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Showing <span id="favorCount" style="color:var(--gold)">${npcs.length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}
+    <div id="favorCountRow" style="font-size:12px;color:var(--text-dim);margin-bottom:10px;display:flex;align-items:center;gap:12px">
+      <span>Showing <span id="favorCount" style="color:var(--gold)">${npcs.filter(n=>!n.unmet).length}</span> NPCs${favorAreaFilter ? ` in <strong style="color:var(--text)">${favorAreaFilter}</strong>` : ''}</span>
+      <span class="filter-chip ${favorShowUnmet?'active':''}" style="font-size:11px;padding:2px 8px;cursor:pointer" onclick="toggleFavorShowUnmet()">Show unmet</span>
     </div>
     ${npcs.length === 0
       ? `<div id="favorTbodyWrap"><div class="empty-state"><div class="icon">🤝</div><h3>No NPCs found</h3></div></div>`
@@ -4339,6 +4379,73 @@ function hideNpcPrefTooltip() {
   document.getElementById('npcPrefTooltip')?.remove();
 }
 
+function showVaultFavorTooltip(npcKey, charNamesJson, e) {
+  hideNpcPrefTooltip();
+  npcPrefTimer = setTimeout(() => {
+    const charNames = JSON.parse(charNamesJson);
+    const npc = NPCS[npcKey];
+    const prefs = npc?.prefs || [];
+
+    // Per-character exact favor rows
+    const favorRows = charNames.map(cn => {
+      const logNpc = playerLogData[cn]?.npcs?.[npcKey];
+      const exactFavor = logNpc?.exactFavor ?? null;
+      const tier = logNpc?.favorLevel || characters.find(c => c.charData?.Character === cn)?.charData?.NPCs?.[npcKey]?.FavorLevel || null;
+      if (!tier && exactFavor == null) return '';
+      const resolvedTier = exactFavor != null ? favorTierFromExact(exactFavor) : tier;
+      const fc = FAVOR_COLORS[resolvedTier] || FAVOR_COLORS.Neutral;
+      const tierLabel = resolvedTier ? resolvedTier.replace(/([A-Z])/g,' $1').trim() : '—';
+      let exactHtml = '';
+      if (exactFavor != null) {
+        const floor = FAVOR_TIER_FLOORS[resolvedTier] ?? 0;
+        const cap   = FAVOR_TIER_CAPS[resolvedTier];
+        const withinTier = exactFavor - floor;
+        const capStr = cap != null ? ` / ${cap}` : '';
+        exactHtml = `<span style="color:var(--text-dim);font-size:11px;margin-left:6px">${exactFavor.toLocaleString()} (${withinTier > 0 ? '+' : ''}${withinTier.toLocaleString()}${capStr} in tier)</span>`;
+      }
+      const charLabel = charNames.length > 1 ? `<span style="color:var(--text-dim);font-size:11px;min-width:70px;flex-shrink:0">${cn}</span>` : '';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        ${charLabel}
+        <span style="color:${fc.text};font-size:12px;font-weight:600">${tierLabel}</span>
+        ${exactHtml}
+      </div>`;
+    }).filter(Boolean).join('');
+
+    if (!favorRows && !prefs.length && !npc?.desc) return;
+
+    // Prefs section (reuse same logic as showNpcPrefTooltip)
+    let prefsHtml = '';
+    if (prefs.length) {
+      const order = ['Love','Like','Dislike','Hate'];
+      const sorted = [...prefs].sort((a,b) => { const ai=order.indexOf(a.desire),bi=order.indexOf(b.desire); return ai!==bi?ai-bi:b.pref-a.pref; });
+      prefsHtml = `<div style="margin-top:${favorRows?'10px':'0'};padding-top:${favorRows?'8px':'0'};border-top:${favorRows?'1px solid var(--border)':'none'}">
+        <div class="npc-pref-title">🎁 Gift Preferences</div>
+        ${sorted.map(p => {
+          const dc = DESIRE_COLORS[p.desire] || { dot:'var(--text-dim)', text:'var(--text-dim)' };
+          return `<div class="npc-pref-row"><div class="npc-pref-dot" style="background:${dc.dot}"></div><span class="npc-pref-name">${p.name}</span><span class="npc-pref-score" style="color:${dc.text}">${p.pref>0?'+':''}${p.pref}</span></div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    const tip = document.createElement('div');
+    tip.className = 'npc-pref-tooltip';
+    tip.id = 'npcPrefTooltip';
+    tip.innerHTML = `
+      ${npc?.desc ? `<div class="npc-desc-line" style="margin-bottom:${favorRows?'8px':'0'}">${npc.desc}</div>` : ''}
+      ${favorRows ? `<div style="margin-bottom:2px"><div class="npc-pref-title" style="margin-bottom:6px">Favor</div>${favorRows}</div>` : ''}
+      ${prefsHtml}`;
+    document.body.appendChild(tip);
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const tw = tip.offsetWidth || 280, th = tip.offsetHeight || 120;
+    let x = e.clientX + 16, y = e.clientY + 8;
+    if (x + tw > W - 8) x = e.clientX - tw - 16;
+    if (y + th > H - 8) y = e.clientY - th - 8;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }, 300);
+}
+
 // ═══════════════════════════════════════════════════════════
 // RECIPES TAB
 // ═══════════════════════════════════════════════════════════
@@ -4350,6 +4457,7 @@ let recipeShowLocked = 'known'; // 'known' | 'locked' | 'all'
 let vaultAreaFilter = '';
 let favorAreaFilter = '';
 let favorSearchQ = '';
+let favorShowUnmet = false;
 let completedWOSearch = '';
 // Favor Calculator state
 let favorCalcCharId       = '';
@@ -4824,6 +4932,7 @@ function renderRecipesTab() {
         <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (<span id="recipeAllCount">${known.length+locked.length}</span>)</button>
         <button class="mode-btn ${recipeShowLocked==='locked'?'active':''}" id="recipeBtnLocked" onclick="setRecipeLocked('locked')">Locked (<span id="recipeLockedCount">${locked.length}</span>)</button>
       </div>
+      <span id="recipeSkillLevel" style="font-size:21px;color:var(--text-dim);white-space:nowrap">${getRecipeSkillLevelHtml()}</span>
     </div>
     <div id="recipeTableWrap">
       ${display.length===0
@@ -4860,6 +4969,8 @@ function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCo
   }
   const thEl = document.getElementById('recipeSkillTh');
   if (thEl) thEl.textContent = `Skill ${recipeSkillSort==='asc'?'▲':recipeSkillSort==='desc'?'▼':'⇅'}`;
+  const lvEl = document.getElementById('recipeSkillLevel');
+  if (lvEl) lvEl.innerHTML = getRecipeSkillLevelHtml();
   const tbody = document.getElementById('recipeTableBody');
   if (tbody) {
     tbody.innerHTML = buildRecipeRows(display, allRecipeKeys);
@@ -4876,6 +4987,15 @@ function FAVOR_COLOR(favor) {
     'BestFriends':'#e8c97a','LikeFamily':'#a880d0','SoulMates':'#60b0b0'
   };
   return map[favor] || 'var(--text-dim)';
+}
+
+function getRecipeSkillLevelHtml() {
+  if (!recipeSkillFilter || activeCharId === '__all__') return '';
+  const char = characters.find(c => c.id === activeCharId);
+  const s = char?.charData?.Skills?.[recipeSkillFilter];
+  if (!s) return '';
+  const level = (s.Level || 0) + (s.BonusLevels || 0);
+  return `Lvl <span style="color:var(--gold);font-weight:600">${level}</span>`;
 }
 
 function setRecipeLocked(v) { recipeShowLocked = v; renderRecipesTab(); }
@@ -4989,10 +5109,8 @@ function renderVaultCard(vaultKey, vaultData, chars, showChar) {
   });
 
   const safeVaultKey = vaultKey.replace(/'/g, "\\'");
-  const hasPrefTooltip = !!(NPCS[vaultKey]?.prefs?.length || NPCS[vaultKey]?.desc);
-  const prefAttrs = hasPrefTooltip
-    ? `onmouseenter="showNpcPrefTooltip('${safeVaultKey}',event)" onmouseleave="hideNpcPrefTooltip()"`
-    : '';
+  const charNamesJson = JSON.stringify(chars.map(c => c.charData?.Character).filter(Boolean)).replace(/"/g, '&quot;');
+  const prefAttrs = `onmouseenter="showVaultFavorTooltip('${safeVaultKey}','${charNamesJson}',event)" onmouseleave="hideNpcPrefTooltip()"`;
 
   return `<div class="vault-card${hasAnyUpgrade?' has-upgrade':''}" ${prefAttrs}>
     <div class="vault-card-header">
@@ -6051,7 +6169,7 @@ function renderSettingsTab() {
   }).join('');
 
   document.getElementById('appContent').innerHTML = `<div class="full-panel"><div class="settings-section">
-    <div class="settings-title">📂 Watch Folder</div>
+    <div class="settings-title">Watch Folder</div>
     <div class="settings-row" style="margin-top:8px">
       <div>
         ${folderHandle
@@ -6071,7 +6189,7 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div class="settings-title">📋 Player Log</div>
+    <div class="settings-title">Player Log</div>
     <div class="settings-meta" style="margin-bottom:10px">Actively watch <code style="color:var(--gold)">player.log</code> to track NPC vendor gold, reset times, and favor in real time. Polls every 2 seconds for new lines.</div>
 
     <!-- Watch status row -->
@@ -6116,7 +6234,7 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div class="settings-title">🔌 WebSocket Bridge</div>
+    <div class="settings-title">WebSocket Bridge</div>
     <div class="settings-meta" style="margin-bottom:10px;line-height:1.7">
       Enables automatic folder watching and live player log in Firefox and other browsers that
       lack the File System Access API. Run <code style="color:var(--gold)">python ws_bridge.py</code> in the
@@ -7096,7 +7214,7 @@ function renderToolsTab() {
     <div class="char-tabs" style="margin-bottom:0">
       <div class="char-tab ${toolsSubTab==='safecracking'?'active':''}" onclick="setToolsSubTab('safecracking')">Safecracking</div>
       <div class="char-tab ${toolsSubTab==='survey'?'active':''}" onclick="setToolsSubTab('survey')">Survey</div>
-      <div class="char-tab ${toolsSubTab==='gardening'?'active':''}" onclick="setToolsSubTab('gardening')">🌱 Gardening</div>
+      <div class="char-tab ${toolsSubTab==='gardening'?'active':''}" onclick="setToolsSubTab('gardening')">Gardening</div>
     </div>
     <div id="toolsContent"></div>`;
   const content = document.getElementById('toolsContent');
@@ -7223,7 +7341,15 @@ function surveyHandleMessage(msg) {
     case 'area_changed':
       surveyActiveArea = msg.area;
       surveyStatus = msg.status || '';
-      if (mainTab === 'tools' && toolsSubTab === 'survey') surveyUpdateStatus();
+      if (mainTab === 'tools' && toolsSubTab === 'survey') {
+        surveyUpdateStatus();
+        // Update "Auto" option label in the map dropdown
+        const mapSel = document.getElementById('surveyMapAreaSel');
+        if (mapSel && mapSel.options[0]) {
+          mapSel.options[0].text = `Auto (${SURVEY_AREA_NAMES[surveyActiveArea]||surveyActiveArea})`;
+        }
+        surveyDrawCanvas();
+      }
       break;
     case 'setup_stopped':
       // Sent by server whenever Stop Setup is pressed, even with 0 locations.
@@ -7573,6 +7699,15 @@ function renderSurveyTab(targetEl) {
     }
     <button class="sync-btn" onclick="surveySend({type:'cmd_recalculate_route'})">↺ Recalculate Route</button>
     <button class="sync-btn" onclick="surveySend({type:'cmd_clear_area'})" style="color:var(--text-dim)">✕ Clear Area</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:var(--text-dim)">Map:</span>
+      <select id="surveyMapAreaSel"
+        style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:12px"
+        onchange="surveyMapAreaOverride=this.value||null;surveyDrawCanvas()">
+        <option value="">Auto (${SURVEY_AREA_NAMES[surveyActiveArea]||surveyActiveArea})</option>
+        ${Object.entries(SURVEY_AREA_NAMES).map(([k,v])=>`<option value="${k}" ${surveyMapAreaOverride===k?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
   </div>
 
   <!-- Body -->
@@ -7771,6 +7906,22 @@ function surveyRenderList() {
 
 // ── Survey canvas ─────────────────────────────────────────
 
+// Convert world coords → canvas pixels using area calibration
+function _surveyCalToCanvas(east, south, cal, W, H) {
+  const u = (east  - cal.x_left)  / (cal.x_right  - cal.x_left);
+  const v = (cal.z_top - south) / (cal.z_top - cal.z_bottom);
+  return [u * W, v * H];
+}
+
+function _surveyGetMapImg(area, onLoaded) {
+  if (_surveyMapImgCache[area]) { onLoaded(_surveyMapImgCache[area]); return; }
+  const file = SURVEY_MAP_FILE[area] || `Map_${area}.jpg`;
+  const img = new Image();
+  img.onload = () => { _surveyMapImgCache[area] = img; onLoaded(img); };
+  img.onerror = () => { _surveyMapImgCache[area] = null; onLoaded(null); };
+  img.src = `/Maps/${file}`;
+}
+
 function surveyDrawCanvas() {
   const canvas = document.getElementById('surveyCanvas');
   if (!canvas) return;
@@ -7778,6 +7929,120 @@ function surveyDrawCanvas() {
   const W = canvas.width, H = canvas.height;
   if (!W || !H) return;
 
+  const effectiveArea = surveyMapAreaOverride || surveyActiveArea;
+  const cal = SURVEY_CAL[effectiveArea] || null;
+
+  // If we have calibration data, try to draw with the real map image
+  if (cal) {
+    _surveyGetMapImg(effectiveArea, img => _surveyDrawCalibrated(ctx, W, H, cal, img));
+    return;
+  }
+
+  // Fallback: schematic mode (bounding-box auto-scaled)
+  _surveyDrawSchematic(ctx, W, H);
+}
+
+function _surveyDrawCalibrated(ctx, W, H, cal, mapImg) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a1f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw map image
+  if (mapImg) {
+    ctx.drawImage(mapImg, 0, 0, W, H);
+    // Dark overlay so markers pop
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#ffffff18';
+    ctx.font = '12px Crimson Pro, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Map image not found', W/2, 20);
+  }
+
+  const toC = (e, s) => _surveyCalToCanvas(e, s, cal, W, H);
+
+  const locs = surveyLocations.filter(l => l.east_absolute != null);
+
+  if (!locs.length && !surveySetupActive) {
+    ctx.fillStyle = '#ffffff55';
+    ctx.font = '13px Crimson Pro, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('No locations', W/2, H/2);
+    return;
+  }
+
+  const routeNum = {};
+  surveyRouteOrder.forEach((id, i) => { routeNum[id] = i + 1; });
+
+  const unvisited = surveyLocations
+    .filter(l => !l.visited && l.east_absolute != null)
+    .sort((a,b) => (routeNum[a.id]||99) - (routeNum[b.id]||99));
+
+  // Route lines
+  if (unvisited.length > 1 || (unvisited.length === 1 && surveyPlayerMeters)) {
+    ctx.strokeStyle = '#46a0ffaa';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    if (surveyPlayerMeters) {
+      const [px, py] = toC(surveyPlayerMeters.east, surveyPlayerMeters.south);
+      if (unvisited.length) {
+        const [fx, fy] = toC(unvisited[0].east_absolute, unvisited[0].south_absolute);
+        ctx.moveTo(px, py); ctx.lineTo(fx, fy);
+      }
+    }
+    for (let i = 0; i < unvisited.length - 1; i++) {
+      const [ax, ay] = toC(unvisited[i].east_absolute, unvisited[i].south_absolute);
+      const [bx, by] = toC(unvisited[i+1].east_absolute, unvisited[i+1].south_absolute);
+      ctx.moveTo(ax, ay); ctx.lineTo(bx, by);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Location markers
+  locs.forEach(loc => {
+    const [x, y] = toC(loc.east_absolute, loc.south_absolute);
+    const num = routeNum[loc.id] || '?';
+    const r = loc.visited ? 9 : 11;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fillStyle = loc.visited ? 'rgba(40,120,40,0.85)' : 'rgba(200,130,0,0.90)';
+    ctx.fill();
+    ctx.strokeStyle = loc.visited ? '#6f6' : '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = loc.visited ? '#cfc' : '#000';
+    ctx.font = `bold ${loc.visited?9:10}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(num), x, y);
+  });
+
+  // Setup mode: show message if no locs yet
+  if (surveySetupActive && !locs.length) {
+    ctx.fillStyle = 'rgba(255,230,100,0.8)';
+    ctx.font = '13px Crimson Pro, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Use survey items — locations will appear on the map', W/2, H - 20);
+  }
+
+  // Player dot
+  if (surveyPlayerMeters) {
+    const [px, py] = toC(surveyPlayerMeters.east, surveyPlayerMeters.south);
+    ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);
+    ctx.fillStyle = '#00c8ffcc';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function _surveyDrawSchematic(ctx, W, H) {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#1a1a1f';
   ctx.fillRect(0, 0, W, H);
@@ -7785,22 +8050,11 @@ function surveyDrawCanvas() {
   const locs = surveyLocations.filter(l => l.east_absolute != null);
 
   if (surveySetupActive && surveyCirclePins.length > 0) {
-    // Setup mode: show crosshairs for detected red circles (pixel coords — just draw in centre area)
-    const pad = 40;
-    surveyCirclePins.forEach((pin, i) => {
-      const x = pad + (i % 5) * ((W - pad*2) / 5);
-      const y = pad + Math.floor(i / 5) * 40;
-      ctx.strokeStyle = '#ffe600cc';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x-12,y); ctx.lineTo(x+12,y); ctx.moveTo(x,y-12); ctx.lineTo(x,y+12); ctx.stroke();
-    });
-    if (!locs.length) {
-      ctx.fillStyle = '#ffffff44';
-      ctx.font = '12px Crimson Pro, serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${surveyCirclePins.length} pin${surveyCirclePins.length!==1?'s':''} detected`, W/2, H-20);
-    }
+    // Setup mode fallback: show detected pin count (OCR only, no calibration)
+    ctx.fillStyle = '#ffffff44';
+    ctx.font = '12px Crimson Pro, serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${surveyCirclePins.length} pin${surveyCirclePins.length!==1?'s':''} detected (no map calibration for this area)`, W/2, H-20);
   }
 
   if (!locs.length) {
@@ -7811,7 +8065,7 @@ function surveyDrawCanvas() {
     return;
   }
 
-  // Compute bounding box
+  // Bounding box auto-scale
   let minE = Infinity, maxE = -Infinity, minS = Infinity, maxS = -Infinity;
   locs.forEach(l => {
     minE = Math.min(minE, l.east_absolute); maxE = Math.max(maxE, l.east_absolute);
@@ -7826,21 +8080,16 @@ function surveyDrawCanvas() {
   const rangeE = maxE - minE || 100;
   const rangeS = maxS - minS || 100;
   const scale = Math.min((W - pad*2) / rangeE, (H - pad*2) / rangeS);
+  const toCanvas = (e, s) => [pad + (e - minE) * scale, pad + (s - minS) * scale];
 
-  function toCanvas(e, s) {
-    return [pad + (e - minE) * scale, pad + (s - minS) * scale];
-  }
-
-  // Build route-number lookup
   const routeNum = {};
   surveyRouteOrder.forEach((id, i) => { routeNum[id] = i + 1; });
 
-  // Unvisited in route order
   const unvisited = surveyLocations
     .filter(l => !l.visited && l.east_absolute != null)
     .sort((a,b) => (routeNum[a.id]||99) - (routeNum[b.id]||99));
 
-  // Draw route lines
+  // Route lines
   if (unvisited.length > 1 || (unvisited.length === 1 && surveyPlayerMeters)) {
     ctx.strokeStyle = '#46a0ff88';
     ctx.lineWidth = 2;
@@ -7862,7 +8111,7 @@ function surveyDrawCanvas() {
     ctx.setLineDash([]);
   }
 
-  // Draw location markers
+  // Location markers
   locs.forEach(loc => {
     const [x, y] = toCanvas(loc.east_absolute, loc.south_absolute);
     const num = routeNum[loc.id] || '?';
@@ -7880,7 +8129,7 @@ function surveyDrawCanvas() {
     ctx.fillText(String(num), x, y);
   });
 
-  // Draw player dot
+  // Player dot
   if (surveyPlayerMeters) {
     const [px, py] = toCanvas(surveyPlayerMeters.east, surveyPlayerMeters.south);
     ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI*2);

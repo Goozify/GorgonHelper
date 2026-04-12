@@ -122,6 +122,13 @@ class GameMapOverlay(QWidget):
         self._debug_circle_checks = 0 # how many times circle detection ran
         self._debug_last_error: Optional[str] = None
 
+        # Area calibration data loaded from calibration JSON files.
+        # Keys: x_left, x_right, z_top, z_bottom (world coords at image edges)
+        self._cal_data: Optional[dict] = None
+
+        # Coordinate-based pins from chat log (world coords), for setup mode display.
+        self._coord_pins: List[Tuple[float, float]] = []
+
         # Auto-calibrated transformation: pixel = offset + meters * scale
         # Computed from circle pin pixels + survey game coordinates.
         self._cal_scale: float = 0.0
@@ -149,9 +156,46 @@ class GameMapOverlay(QWidget):
         self._map_h = h
         self.setGeometry(x, y, w, h)
 
+    def set_area_calibration(self, cal: Optional[dict]):
+        """Set calibration data for the current area.
+
+        cal should have keys: x_left, x_right, z_top, z_bottom.
+        Pass None to disable coordinate-based positioning.
+        """
+        self._cal_data = cal
+        self.update()
+
+    def world_to_pixel(self, east: float, south: float) -> Optional[Tuple[float, float]]:
+        """Convert world coordinates (east, south) to overlay pixel position.
+
+        Uses the area calibration loaded from the calibration JSON files.
+        Returns (px, py) clamped to overlay bounds, or None if no calibration.
+        """
+        cal = self._cal_data
+        if cal is None or self._map_w <= 0 or self._map_h <= 0:
+            return None
+        x_left = cal['x_left']
+        x_right = cal['x_right']
+        z_top = cal['z_top']
+        z_bottom = cal['z_bottom']
+        if x_right == x_left or z_top == z_bottom:
+            return None
+        u = (east - x_left) / (x_right - x_left)
+        v = (z_top - south) / (z_top - z_bottom)
+        # Reject obviously off-map coordinates
+        if not (-0.5 <= u <= 1.5 and -0.5 <= v <= 1.5):
+            return None
+        return u * self._map_w, v * self._map_h
+
+    def add_coord_pin(self, east: float, south: float):
+        """Record a chat-derived coordinate pin for setup-mode visual feedback."""
+        self._coord_pins.append((east, south))
+        self.update()
+
     def clear_circle_pins(self):
         """Remove all detected red-circle pins (call on new session)."""
         self._circle_pins.clear()
+        self._coord_pins.clear()
         self._cal_scale = 0.0
         self.update()
 
@@ -310,13 +354,20 @@ class GameMapOverlay(QWidget):
     def _loc_to_pixel(self, loc: SurveyLocation) -> Optional[Tuple[float, float]]:
         """Get overlay pixel position for a location.
 
-        Prefers stored pixel_x/pixel_y (assigned directly from circle pin
-        detection during setup) over computed positions from calibration.
+        Priority order:
+        1. Calibration-based world→pixel conversion (most accurate, always fresh)
+        2. Stored pixel_x/pixel_y from OCR circle-pin detection (legacy/fallback)
+        3. Auto-calibrated linear transformation
         """
-        # Direct pixel position from circle pin detection (most accurate)
+        # 1. Area calibration (preferred — fresh per overlay size, no OCR needed)
+        if loc.east_absolute is not None and self._cal_data is not None:
+            result = self.world_to_pixel(loc.east_absolute, loc.south_absolute)
+            if result is not None:
+                return result
+        # 2. Direct pixel position from OCR circle pin detection
         if loc.pixel_x is not None and loc.pixel_y is not None:
             return (loc.pixel_x, loc.pixel_y)
-        # Fallback: compute from calibration
+        # 3. Auto-calibrated linear transformation
         if self._cal_scale <= 0 or loc.east_absolute is None:
             return None
         x = self._cal_offset_x + loc.east_absolute * self._cal_scale
@@ -341,12 +392,37 @@ class GameMapOverlay(QWidget):
 
     def _do_paint(self, painter: QPainter):
         if self._setup_active:
-            # --- SETUP MODE: draw crosshair only at the LATEST detected pin ---
-            # Previous pins are hidden to avoid clutter during rapid auto-use.
-            if self._circle_pins:
+            # --- SETUP MODE ---
+            # Coordinate-based pins from chat log take priority over OCR circle pins.
+
+            if self._coord_pins:
+                # All-but-last coord pins: small dimmed crosshairs
+                for east, south in self._coord_pins[:-1]:
+                    pos = self.world_to_pixel(east, south)
+                    if pos:
+                        cpx, cpy = pos
+                        pt = QPointF(cpx, cpy)
+                        painter.setPen(QPen(QColor(255, 230, 0, 110), 1))
+                        painter.setBrush(Qt.NoBrush)
+                        painter.drawEllipse(pt, 6, 6)
+                        painter.drawLine(QPointF(cpx - 8, cpy), QPointF(cpx + 8, cpy))
+                        painter.drawLine(QPointF(cpx, cpy - 8), QPointF(cpx, cpy + 8))
+                # Latest coord pin: bright full crosshair
+                east, south = self._coord_pins[-1]
+                pos = self.world_to_pixel(east, south)
+                if pos:
+                    cpx, cpy = pos
+                    pt = QPointF(cpx, cpy)
+                    painter.setPen(QPen(QColor(255, 230, 0, 220), 2))
+                    painter.setBrush(Qt.NoBrush)
+                    painter.drawEllipse(pt, 8, 8)
+                    painter.drawLine(QPointF(cpx - 12, cpy), QPointF(cpx + 12, cpy))
+                    painter.drawLine(QPointF(cpx, cpy - 12), QPointF(cpx, cpy + 12))
+            elif self._circle_pins:
+                # Fallback: OCR circle pin (if no coord pins available)
                 cpx, cpy, _t = self._circle_pins[-1]
                 pt = QPointF(cpx, cpy)
-                painter.setPen(QPen(QColor(255, 230, 0, 200), 2))
+                painter.setPen(QPen(QColor(255, 150, 80, 200), 2))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(pt, 8, 8)
                 painter.drawLine(QPointF(cpx - 12, cpy), QPointF(cpx + 12, cpy))

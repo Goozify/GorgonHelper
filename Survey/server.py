@@ -210,6 +210,13 @@ class SurveyServer:
         self._hotkey: Optional[KeyboardHotkey] = None
         self._single_use_hotkey: Optional[KeyboardHotkey] = None
 
+        # Error-recovery tracking: set to the failed slot index when an OCR timeout
+        # marks a slot red.  Used to prevent double-advancing when both
+        # _on_survey_detected (duplicate path) and _on_circle_pin (late OCR) fire
+        # for the same retry — whichever fires first claims the advance, the
+        # second sees _current_scan_slot already past the recovery slot and skips.
+        self._error_recovery_slot: Optional[int] = None
+
         # Region selector overlay (keep reference so Qt doesn't GC it)
         self._region_selector: Optional[RegionSelector] = None
 
@@ -226,6 +233,64 @@ class SurveyServer:
                 self.config.map_capture.x, self.config.map_capture.y,
                 self.config.map_capture.w, self.config.map_capture.h,
             )
+
+        # Load map calibration (used to convert world coords → overlay pixels without OCR)
+        self._calibration: dict = self._load_calibration()
+        # Apply calibration for the starting area
+        if self.config.active_area:
+            cal = self._calibration.get(self.config.active_area)
+            if cal:
+                self.map_overlay.set_area_calibration(cal)
+                log.info("Calibration applied for starting area: %s", self.config.active_area)
+
+    # ------------------------------------------------------------------
+    # Map calibration
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_calibration() -> dict:
+        """Load and merge map calibration data from both JSON files.
+
+        map_calibration.json (manual, higher accuracy) takes priority over
+        calibration_from_wiki.json (auto-generated from wiki landmarks).
+        """
+        maps_dir = Path(__file__).parent.parent / "Maps"
+        result: dict = {}
+
+        # Base layer: wiki auto-calibration
+        wiki_path = maps_dir / "calibration_from_wiki.json"
+        if wiki_path.exists():
+            try:
+                wiki = json.loads(wiki_path.read_text(encoding="utf-8"))
+                for area, data in wiki.items():
+                    if data.get("x_left") is not None:
+                        result[area] = {
+                            "x_left":   data["x_left"],
+                            "x_right":  data["x_right"],
+                            "z_top":    data["z_top"],
+                            "z_bottom": data["z_bottom"],
+                        }
+            except Exception as e:
+                log.warning("Could not load wiki calibration: %s", e)
+
+        # Override with manual calibration (higher accuracy)
+        manual_path = maps_dir / "map_calibration.json"
+        if manual_path.exists():
+            try:
+                manual = json.loads(manual_path.read_text(encoding="utf-8"))
+                for area, data in manual.items():
+                    result[area] = {
+                        "x_left":   data["x_left"],
+                        "x_right":  data["x_right"],
+                        "z_top":    data["z_top"],
+                        "z_bottom": data["z_bottom"],
+                    }
+            except Exception as e:
+                log.warning("Could not load manual calibration: %s", e)
+
+        log.info("Map calibration loaded for %d areas: %s",
+                 len(result), sorted(result.keys()))
+        return result
 
     # ------------------------------------------------------------------
     # Async entry point
@@ -458,6 +523,7 @@ class SurveyServer:
         self._current_scan_slot = 0
         self._current_slot_labels = {}
         self._pending_visit_loc = None
+        self._error_recovery_slot = None
         self.map_overlay.clear_circle_pins()
         self.map_overlay._setup_active = True
         self.inv_overlay.set_slot_labels({})
@@ -628,6 +694,10 @@ class SurveyServer:
         )
 
         if loc:
+            self._error_recovery_slot = None  # clean exit from any error-recovery state
+            # Immediately show coordinate-based crosshair on map overlay
+            # (no OCR needed — position comes from chat log + calibration)
+            self.map_overlay.add_coord_pin(loc.east_absolute, loc.south_absolute)
             self._current_scan_slot += 1
             self.inv_overlay.set_current_slot(self._current_scan_slot)
             # Wake up auto-use loop if it's waiting for this detection
@@ -640,12 +710,20 @@ class SurveyServer:
                 "status": f"Detected: {item_name}  ({east:+d}E, {south:+d}S)  [slot {self._current_scan_slot}]",
             })
         else:
-            # Duplicate location — survey was still consumed, so advance the
-            # scan slot exactly as we would for a successful detection.
-            # Without this, _current_scan_slot stays on the same slot and every
-            # subsequent retry also hits the duplicate check, stalling progress.
-            self._current_scan_slot += 1
-            self.inv_overlay.set_current_slot(self._current_scan_slot)
+            # Duplicate location — survey was still consumed so we must advance
+            # the scan slot.  BUT: if we're in error-recovery mode (_error_recovery_slot
+            # is set), _on_circle_pin may also try to advance for the same retry.
+            # Whichever of the two fires first claims the advance; the second sees
+            # _current_scan_slot already past the recovery slot and skips.
+            rec = self._error_recovery_slot
+            if rec is not None:
+                if self._current_scan_slot <= rec:
+                    self._current_scan_slot = rec + 1
+                    self.inv_overlay.set_current_slot(self._current_scan_slot)
+                # else: _on_circle_pin already advanced — nothing to do
+            else:
+                self._current_scan_slot += 1
+                self.inv_overlay.set_current_slot(self._current_scan_slot)
             if self._auto_use_event and not self._auto_use_event.is_set():
                 self._auto_use_event.set()
             await self.broadcast({
@@ -719,6 +797,13 @@ class SurveyServer:
 
     async def _on_area_detected(self, area: str):
         self.config.active_area = area
+        # Update map calibration for the newly detected area
+        cal = self._calibration.get(area)
+        self.map_overlay.set_area_calibration(cal)
+        if cal:
+            log.debug("Calibration applied for area: %s", area)
+        else:
+            log.debug("No calibration data for area: %s", area)
         await self.broadcast({
             "type": "area_changed",
             "area": area,
@@ -973,6 +1058,7 @@ class SurveyServer:
         except asyncio.TimeoutError:
             log.warning("SINGLE-USE  pin timeout at slot %d — map OCR didn't detect circle", slot)
             self._current_scan_slot = slot
+            self._error_recovery_slot = slot
             self.inv_overlay.set_current_slot(slot)
             self.inv_overlay.set_error_slot(slot)
             await self.broadcast({
@@ -1031,6 +1117,7 @@ class SurveyServer:
                         log.warning("AUTO-USE  pin timeout at slot %d — map OCR didn't detect circle", slot)
                         # Revert scan slot so yellow highlight stays on the failed slot
                         self._current_scan_slot = slot
+                        self._error_recovery_slot = slot
                         self.inv_overlay.set_current_slot(slot)
                         self.inv_overlay.set_error_slot(slot)
                         await self.broadcast({
@@ -1219,17 +1306,22 @@ class SurveyServer:
         # If a previous pin timed out and left an error indicator, clear it now —
         # the circle eventually appeared so the slot position will be recorded.
         if self.inv_overlay._error_slot is not None:
+            err = self.inv_overlay._error_slot  # save before clearing
             self.inv_overlay.set_error_slot(None)
-            # Only advance the scan slot when no click flow is tracking this pin.
-            # If active_wait is True, _on_survey_detected will increment via the
-            # normal chat-log path — advancing here too would double-count and
-            # skip the next survey slot.
-            if not active_wait:
-                self._current_scan_slot = self.inv_overlay._current_slot + 1
+            # Only advance when no click flow is actively tracking this pin.
+            # If active_wait is True, _check_pin_after_click is running and
+            # _on_survey_detected will handle the advance via chat-log.
+            # If active_wait is False (late OCR / manual double-click), advance
+            # only if _on_survey_detected (duplicate path) hasn't already done so —
+            # _error_recovery_slot stays set until a fresh successful scan clears it,
+            # so whichever of the two fires first claims the advance and the second
+            # sees _current_scan_slot already past the recovery slot and skips.
+            if not active_wait and self._current_scan_slot <= err:
+                self._current_scan_slot = err + 1
                 self.inv_overlay.set_current_slot(self._current_scan_slot)
             asyncio.ensure_future(self.broadcast({
                 "type": "status",
-                "message": f"✓ Circle detected — slot {self.inv_overlay._current_slot + 1} recovered. Press hotkey to continue.",
+                "message": f"✓ Circle detected — slot {err + 1} recovered. Press hotkey to continue.",
             }))
         asyncio.ensure_future(self.broadcast({
             "type": "circle_pin_added",
