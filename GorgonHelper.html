@@ -3791,6 +3791,47 @@ function parsePlayerLogLines(lines) {
         vendorCount++;
         continue;
       }
+      // "X Seeds/Seedling can't be used: You already have the maximum of that type of plant growing"
+      // Fires when the player tries to plant but the slot is already full.
+      // Two uses:
+      //  (a) Fill the most recently created Unknown (null cropType) plot within 60s — the Unknown
+      //      must be the plant that just completed the slot, so naming it from the error is valid.
+      //  (b) Prune if our tracked count somehow exceeds the slot max.
+      m = line.match(/ProcessErrorMessage\(ItemUnusable,\s*"([^"]+?) (?:Seeds?|Seedling) can't be used: You already have the maximum/);
+      if (m && char) {
+        const seedName = m[1]; // e.g. "Cotton", "Wheat", "Carrot"
+        // Match seed name to a GARDEN_SLOT_MAP key (try direct, then "X Plant")
+        const cropKey = GARDEN_SLOT_MAP[seedName] ? seedName
+                      : GARDEN_SLOT_MAP[seedName + ' Plant'] ? seedName + ' Plant'
+                      : null;
+        if (cropKey) {
+          const plots = gardenData[char]?.plots;
+          if (plots) {
+            // (a) Fill the newest Unknown plot created within 60s
+            const recent = Date.now() - 60000;
+            let newestId = null, newestTime = 0;
+            for (const [id, p] of Object.entries(plots)) {
+              if (p.cropType || p.stage === 'harvested') continue;
+              const t = p.firstSeenAt || 0;
+              if (t >= recent && t > newestTime) { newestTime = t; newestId = id; }
+            }
+            if (newestId) {
+              plots[newestId].cropType = cropKey;
+              if (pendingPlantForCrop?.plotId === newestId) pendingPlantForCrop = null;
+              vendorCount++;
+            }
+            // (b) Prune if tracked count now exceeds slot max (stale entries)
+            const slotInfo = GARDEN_SLOT_MAP[cropKey];
+            let cnt = 0;
+            for (const p of Object.values(plots)) {
+              if (p.stage !== 'harvested' && p.cropType && GARDEN_SLOT_MAP[p.cropType]?.slot === slotInfo.slot) cnt++;
+            }
+            if (cnt > slotInfo.max) _gardenPruneOldestForSlot(char, cropKey);
+          }
+        }
+        continue;
+      }
+
       // Garden harvest detection — four-tier approach:
       //
       // Tier 1 (PRIMARY): StartInteraction(plotId) → plot already 'ripe' → immediate harvest.
