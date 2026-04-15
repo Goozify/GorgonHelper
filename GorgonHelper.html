@@ -4797,11 +4797,10 @@ function buildRecipeRows(displayList, allRecipeKeys) {
 
     // Expanded: sources, NPC detail, ingredients
     const sources = SOURCES_RECIPES[k] || [];
-    const sourceBadges = sources.map(s => {
+    // Training/HangOut NPCs are shown in the detail text below — exclude their chips
+    const sourceBadges = sources.filter(s => s.t !== 'Training' && s.t !== 'HangOut').map(s => {
       const t = s.t; let cls = 'recipe-source', label = '', extra = '';
-      if (t === 'Training')  { cls += ' training'; label = `🎓 ${s.npcName||s.npc||'?'}`; extra = s.area?` <span style="opacity:.7">(${s.area})</span>`:''; }
-      else if (t === 'HangOut') { cls += ' hangout'; label = `🤝 ${s.npcName||s.npc||'?'}`; extra = s.area?` <span style="opacity:.7">(${s.area})</span>`:''; }
-      else if (t === 'Skill')   { cls += ' skill';   label = `📚 Skill: ${s.skill||'?'}`; }
+      if (t === 'Skill')   { cls += ' skill';   label = `📚 Skill: ${s.skill||'?'}`; }
       else if (t === 'Item')    { cls += ' item';    label = `📦 ${ITEMS[String(s.item)]?.[0]||`item #${s.item}`}`; }
       else if (t === 'NpcGift') { cls += ' gift';    label = `🎁 ${s.npcName||s.npc||'Gift'}`; extra = s.area?` <span style="opacity:.7">(${s.area})</span>`:''; }
       else if (t === 'Quest')   { cls += ' quest';   label = `📜 Quest`; }
@@ -4813,6 +4812,7 @@ function buildRecipeRows(displayList, allRecipeKeys) {
     const npcSources = sources.filter(s => s.t === 'Training' || s.t === 'HangOut');
     let npcDetailHtml = '';
     if (dataLoaded.npcs && npcSources.length > 0) {
+      const activeChar = showAllChars ? null : (characters.find(c => c.id === activeCharId) || characters[0]);
       const npcDetails = npcSources.map(s => {
         const npc = NPCS[s.npc]; if (!npc) return '';
         // For Training, use per-recipe favor from NPC_TRAINING; fall back to service-level favor
@@ -4822,9 +4822,26 @@ function buildRecipeRows(displayList, allRecipeKeys) {
           || npc.services?.find(sv => sv.type === 'Training' || sv.type === 'HangOut')?.favor
           || '—';
         const favorLabel = FAVOR_LABELS[reqFavor] || reqFavor;
+
+        // Council coin cost
         const costStr = perRecipeEntry?.cost != null
           ? ` · <span style="color:var(--gold)">${perRecipeEntry.cost.toLocaleString()} 🪙</span>` : '';
-        return `<span style="font-size:10px;color:var(--text-dim)">${npc.name}: <span style="color:var(--text)">${npc.area}</span> · favor needed: <span style="color:${FAVOR_COLOR(reqFavor)}">${favorLabel}</span>${costStr}</span>`;
+
+        // Item costs (e.g. "3× Royal Jelly")
+        const itemCostStr = perRecipeEntry?.itemCosts?.length
+          ? ' · ' + perRecipeEntry.itemCosts.map(ic =>
+              `<span style="color:var(--text)">${ic.qty}× ${ic.name}</span>`
+            ).join(' + ')
+          : '';
+
+        // Current character's favor with this NPC
+        const charFavor = activeChar?.charData?.NPCs?.[s.npc]?.FavorLevel || null;
+        const charFavorLabel = charFavor ? (FAVOR_LABELS[charFavor] || charFavor) : null;
+        const charFavorHtml = charFavorLabel
+          ? ` · <span style="color:var(--text-dim)">yours: <span style="color:${FAVOR_COLOR(charFavor)}">${charFavorLabel}</span></span>`
+          : '';
+
+        return `<span style="font-size:10px;color:var(--text-dim)">${npc.name}: <span style="color:var(--text)">${npc.area}</span> · favor needed: <span style="color:${FAVOR_COLOR(reqFavor)}">${favorLabel}</span>${charFavorHtml}${costStr}${itemCostStr}</span>`;
       }).filter(Boolean).join('<br>');
       if (npcDetails) npcDetailHtml = `<div style="margin-top:3px">${npcDetails}</div>`;
     }
