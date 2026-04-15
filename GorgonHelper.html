@@ -507,7 +507,7 @@ let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening'
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
 let gardenSessionActive = false; // only collect plot events when user has pressed Start
 const playerOwnedPetIds = new Set(); // entity IDs from LocalPlayer: ProcessSetPetOwner — our plants only
-let pendingHarvestPlotId = null;  // plotId of last StartInteraction for a tracked garden entity (cleared by Gardening XP or ScreenText error)
+let pendingHarvestPlotIds = [];   // queue of plotIds from StartInteraction awaiting harvest confirmation (multi-harvest support)
 const gardenItemCropMap = {};     // itemId (string) → cropType: built from ProcessAddItem so UpdateItemCode can identify the crop
 let lastUpdateItemCropType = null; // cropType inferred from the most recent ProcessUpdateItemCode whose itemId is in gardenItemCropMap
 
@@ -3456,6 +3456,7 @@ async function loadPlayerLogData() {
     const g = localStorage.getItem('pgGardenData');
     if (g) gardenData = JSON.parse(g) || {};
   } catch(e) {}
+  _gardenSanitize(); // Fix any slots that exceed their max (missed harvest detections from previous sessions)
   gardenSessionActive = localStorage.getItem('gardenSessionActive') === '1';
   const savedPos = parseInt(localStorage.getItem('pgPlayerLogPos') || '0', 10);
   if (savedPos > 0) playerLogFileSize = savedPos;
@@ -3496,6 +3497,48 @@ function _gardenMarkRipeByType(char, cropType) {
   }
   if (oldestId) { plots[oldestId].stage = 'harvested'; plots[oldestId].updatedAt = Date.now(); return true; }
   return false;
+}
+// Prune the oldest non-harvested plot for a given slot type — called when a new plant
+// registers but the slot is already at capacity (missed harvest detection).
+function _gardenPruneOldestForSlot(char, cropType) {
+  const slotInfo = GARDEN_SLOT_MAP[cropType];
+  if (!slotInfo) return;
+  const plots = gardenData[char]?.plots;
+  if (!plots) return;
+  let oldest = null, oldestId = null;
+  for (const [id, p] of Object.entries(plots)) {
+    if (p.stage === 'harvested' || !p.cropType) continue;
+    if (GARDEN_SLOT_MAP[p.cropType]?.slot !== slotInfo.slot) continue;
+    if (!oldest || (p.updatedAt || 0) < (oldest.updatedAt || 0)) { oldest = p; oldestId = id; }
+  }
+  if (oldestId) { plots[oldestId].stage = 'harvested'; plots[oldestId].updatedAt = Date.now(); }
+}
+// Sanitize gardenData after loading from storage: if any slot has more non-harvested
+// plots than its max allows (impossible in-game), mark the oldest excess ones as harvested.
+function _gardenSanitize() {
+  for (const [charName, charData] of Object.entries(gardenData)) {
+    const plots = charData?.plots;
+    if (!plots) continue;
+    // Group active plots by slot type, sorted oldest-first
+    const bySlot = {};
+    for (const [id, p] of Object.entries(plots)) {
+      if (p.stage === 'harvested' || !p.cropType) continue;
+      const slotInfo = GARDEN_SLOT_MAP[p.cropType];
+      if (!slotInfo) continue;
+      if (!bySlot[slotInfo.slot]) bySlot[slotInfo.slot] = { max: slotInfo.max, entries: [] };
+      bySlot[slotInfo.slot].entries.push([id, p]);
+    }
+    for (const { max, entries } of Object.values(bySlot)) {
+      if (entries.length <= max) continue;
+      // Sort oldest-first (by updatedAt, then plantedAt)
+      entries.sort((a, b) => ((a[1].updatedAt || 0) - (b[1].updatedAt || 0)));
+      const excess = entries.length - max;
+      for (let i = 0; i < excess; i++) {
+        plots[entries[i][0]].stage = 'harvested';
+        plots[entries[i][0]].updatedAt = Date.now();
+      }
+    }
+  }
 }
 
 function parsePlayerLogLines(lines) {
@@ -3690,6 +3733,9 @@ function parsePlayerLogLines(lines) {
           // The slot check is key: if e.g. Carrot slot is 2/2, the next plant can't be a Carrot —
           // even if a Carrot appearance loop fired recently (from an existing plant's scale update).
           const rawCrop = (lastCropAsset && !lastCropAssetUsed && (Date.now() - lastCropAssetTime) < 5000) ? lastCropAsset : null;
+          // If the slot appears full but a new plant is being registered, the oldest must have been
+          // harvested without detection — prune it so the new entry gets the correct cropType.
+          if (rawCrop && isGardenSlotFull(rawCrop, char)) _gardenPruneOldestForSlot(char, rawCrop);
           const crop = (rawCrop && !isGardenSlotFull(rawCrop, char)) ? rawCrop : null;
           gardenData[char].plots[plotId] = {
             cropType: crop, stage: 'planted', description: '', title: '', action: '', scale: 0,
@@ -3773,19 +3819,18 @@ function parsePlayerLogLines(lines) {
         if (plot) {
           if (plot.stage === 'ripe') {
             if (_gardenMarkHarvested(char, plotId)) vendorCount++;
-            pendingHarvestPlotId = null;
+            // Don't push to queue — already handled immediately
           } else {
-            pendingHarvestPlotId = plotId;
+            pendingHarvestPlotIds.push(plotId);
           }
-        } else {
-          pendingHarvestPlotId = null;
         }
+        // If no tracked plot, don't push — we have nothing to confirm against
         continue;
       }
 
-      // Clear pending on failed interaction (plant still growing / some other error)
+      // Clear pending queue on failed interaction (plant still growing / some other error)
       if (line.includes('ProcessScreenText(ErrorMessage')) {
-        pendingHarvestPlotId = null;
+        pendingHarvestPlotIds = [];
         lastUpdateItemCropType = null;
         continue;
       }
@@ -3799,11 +3844,17 @@ function parsePlayerLogLines(lines) {
             gardenItemCropMap[itemId] = cropType; break;
           }
         }
-        if (pendingHarvestPlotId) {
-          const plot = gardenData[char]?.plots?.[pendingHarvestPlotId];
-          if (plot?.cropType && itemName.toLowerCase().startsWith(plot.cropType.split(' ')[0].toLowerCase())) {
-            if (_gardenMarkHarvested(char, pendingHarvestPlotId)) vendorCount++;
-            pendingHarvestPlotId = null; lastUpdateItemCropType = null;
+        if (pendingHarvestPlotIds.length) {
+          // Find the first queued plot whose cropType matches this item
+          for (let qi = 0; qi < pendingHarvestPlotIds.length; qi++) {
+            const pendId = pendingHarvestPlotIds[qi];
+            const plot = gardenData[char]?.plots?.[pendId];
+            if (plot?.cropType && itemName.toLowerCase().startsWith(plot.cropType.split(' ')[0].toLowerCase())) {
+              if (_gardenMarkHarvested(char, pendId)) vendorCount++;
+              pendingHarvestPlotIds.splice(qi, 1);
+              lastUpdateItemCropType = null;
+              break;
+            }
           }
         }
       }
@@ -3814,9 +3865,11 @@ function parsePlayerLogLines(lines) {
 
       // Tier 3 + 4 — Gardening XP: definitive harvest signal (never fires for water/fertilize)
       if (line.includes('ProcessUpdateSkill') && line.includes('type=Gardening')) {
-        if (pendingHarvestPlotId) {
-          if (_gardenMarkHarvested(char, pendingHarvestPlotId)) vendorCount++;
-          pendingHarvestPlotId = null; lastUpdateItemCropType = null;
+        if (pendingHarvestPlotIds.length) {
+          // Confirm the oldest pending plot (first in queue)
+          const pendId = pendingHarvestPlotIds.shift();
+          if (_gardenMarkHarvested(char, pendId)) vendorCount++;
+          lastUpdateItemCropType = null;
         } else if (lastUpdateItemCropType) {
           if (_gardenMarkRipeByType(char, lastUpdateItemCropType)) vendorCount++;
           lastUpdateItemCropType = null;
