@@ -1611,8 +1611,14 @@ function removeChar(id, e) {
 // SELL & GIFT ADVISOR
 // ═══════════════════════════════════════════════════════════
 
+// Item keywords in pg_items.json may carry a numeric value suffix, e.g. "MeatDish=390".
+// NPC preferences only use the base name ("MeatDish"), so strip the suffix before matching.
+function _sgKwSet(keywords) {
+  return new Set(keywords.map(k => { const e = k.indexOf('='); return e > 0 ? k.slice(0, e) : k; }));
+}
+
 function sgGetSellNpcs(keywords) {
-  const kset = new Set(keywords);
+  const kset = _sgKwSet(keywords);
   const char = characters.find(c => c.id === sellGiftCharId);
   const charName = char?.charData.Character;
   const logNpcs = charName ? (playerLogData[charName]?.npcs || {}) : {};
@@ -1644,7 +1650,7 @@ function sgPrefKwMatch(kw, kset, rarity, value) {
 }
 
 function sgGetGiftNpcs(keywords, rarity, value) {
-  const kset = new Set(keywords);
+  const kset = _sgKwSet(keywords);
   const char = characters.find(c => c.id === sellGiftCharId);
   const charName = char?.charData.Character;
   const logNpcs = charName ? (playerLogData[charName]?.npcs || {}) : {};
