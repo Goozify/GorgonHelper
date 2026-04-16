@@ -2498,8 +2498,19 @@ function renderRight(char) {
   if (townVaultSet) items = items.filter(i=>Object.keys(i.vaults).some(v=>townVaultSet.has(v)));
   if (activeVaultFilter) items = items.filter(i=>i.vaults[activeVaultFilter]!==undefined);
   if (showConsolidateOnly) items = items.filter(i=>getConsolidationInfo(i.name,i.vaults,i.typeId));
-  const rows = items.map(i=>renderItemRow(i.name,i.vaults,i.total,i.typeId,i.value,q,null,getConsolidationInfo(i.name,i.vaults,i.typeId))).join('');
-  const totalValue = items.reduce((s,i)=>s+(i.value||0)*i.total, 0);
+  const rows = items.map(i => {
+    // When a location or vault filter is active, restrict displayed vault chips and total
+    // to only the matching vaults so the count reflects the filtered view, not the global total.
+    let fv = townVaultSet ? Object.fromEntries(Object.entries(i.vaults).filter(([v]) => townVaultSet.has(v))) : i.vaults;
+    if (activeVaultFilter) fv = Object.fromEntries(Object.entries(fv).filter(([v]) => v === activeVaultFilter));
+    const ft = Object.values(fv).reduce((s, n) => s + n, 0);
+    return renderItemRow(i.name, fv, ft, i.typeId, i.value, q, null, getConsolidationInfo(i.name, i.vaults, i.typeId));
+  }).join('');
+  const totalValue = items.reduce((s, i) => {
+    let fv = townVaultSet ? Object.entries(i.vaults).filter(([v]) => townVaultSet.has(v)) : Object.entries(i.vaults);
+    if (activeVaultFilter) fv = fv.filter(([v]) => v === activeVaultFilter);
+    return s + (i.value || 0) * fv.reduce((sum, [, n]) => sum + n, 0);
+  }, 0);
   const totalValueHtml = totalValue > 0
     ? `<div style="margin-bottom:8px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
@@ -2568,9 +2579,20 @@ function renderRightAll() {
     const charEntries = townVaultSet
       ? Object.values(item.byChar).filter(cd => Object.keys(cd.vaults).some(v => townVaultSet.has(v)))
       : Object.values(item.byChar);
-    return charEntries.map(cd => renderItemRow(item.name, cd.vaults, cd.total, item.typeId, item.value, q, cd.charName, getConsolidationInfo(item.name, cd.vaults, item.typeId)));
+    return charEntries.map(cd => {
+      // Restrict vault chips and total to the filtered town's vaults only
+      const fv = townVaultSet ? Object.fromEntries(Object.entries(cd.vaults).filter(([v]) => townVaultSet.has(v))) : cd.vaults;
+      const ft = Object.values(fv).reduce((s, n) => s + n, 0);
+      return renderItemRow(item.name, fv, ft, item.typeId, item.value, q, cd.charName, getConsolidationInfo(item.name, cd.vaults, item.typeId));
+    });
   }).join('');
-  const totalValue = items.reduce((s,i)=>s+(i.value||0)*i.total, 0);
+  const totalValue = items.reduce((s, i) => {
+    const filteredTotal = townVaultSet
+      ? Object.values(i.byChar).reduce((sum, cd) =>
+          sum + Object.entries(cd.vaults).filter(([v]) => townVaultSet.has(v)).reduce((t, [, n]) => t + n, 0), 0)
+      : i.total;
+    return s + (i.value || 0) * filteredTotal;
+  }, 0);
   const totalValueHtml = totalValue > 0
     ? `<div style="margin-bottom:10px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
