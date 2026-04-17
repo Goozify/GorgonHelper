@@ -1987,18 +1987,17 @@ function sgParsePowerDesc(desc, sz) {
     return `<img src="${url}" width="${sz}" height="${sz}" style="vertical-align:middle;margin-right:1px;image-rendering:pixelated;border-radius:2px">`;
   });
 }
-function sgShowTooltip(e, item) {
-  clearTimeout(_sgTooltipTimer);
-  const old = document.getElementById('sgItemTooltip');
-  if (old) old.remove();
-  const typeId = String(item.TypeID);
-  const iData  = ITEMS[typeId];
-  const rarity = item.Rarity || '';
+// Shared helper: builds rarity/level/slot/powers HTML for an inventory item object.
+// Used by sgShowTooltip and showItemTooltip.
+// Pass showValue=true to include the coin value line between level and powers (used by sgShowTooltip).
+function _buildEquipHtml(item, showValue) {
   const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
-  const rarityColor = rarityColors[rarity] || 'var(--text-dim)';
-  const category = sgItemCategory(typeId);
+  const rarity = item.Rarity || '';
+  const rarityColor = rarityColors[rarity] || '';
+  const typeId = String(item.TypeID);
+  const category = (typeof sgItemCategory === 'function') ? sgItemCategory(typeId) : '';
   const powers = (item.TSysPowers || []).map(p => {
-    const tierMap = TSYS[p.Power];
+    const tierMap = TSYS && TSYS[p.Power];
     if (tierMap) {
       const nums = Object.keys(tierMap).map(Number).sort((a,b)=>a-b);
       const best = nums.filter(n => n <= p.Tier).pop() || nums[0];
@@ -2013,17 +2012,30 @@ function sgShowTooltip(e, item) {
     }
     return `<div style="font-size:11px;color:var(--text-dim);margin-top:3px">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`;
   }).join('');
-  const desc = iData ? '' : '';
+  return [
+    rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}${category ? ` · ${category}` : ''}</div>` : '',
+    item.Level ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Level ${item.Level}</div>` : '',
+    (showValue && item.Value) ? `<div style="font-size:11px;color:var(--gold-dim);margin-bottom:4px">${item.Value.toLocaleString()} 🪙</div>` : '',
+    powers ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">${powers}</div>` : '',
+  ].join('');
+}
+function sgShowTooltip(e, item) {
+  clearTimeout(_sgTooltipTimer);
+  const old = document.getElementById('sgItemTooltip');
+  if (old) old.remove();
+  const typeId = String(item.TypeID);
+  const iData  = ITEMS[typeId];
+  const rarity = item.Rarity || '';
+  const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
+  const rarityColor = rarityColors[rarity] || 'var(--text-dim)';
+  const eqHtml = _buildEquipHtml(item, true);
   const tip = document.createElement('div');
   tip.id = 'sgItemTooltip';
   tip.className = 'item-tooltip';
   tip.style.cssText = 'pointer-events:none';
   tip.innerHTML = `
     <div class="tooltip-title" style="color:${rarityColor||'var(--text)'}">${item.Name || (iData?.[0] || 'Unknown item')}</div>
-    ${rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}${category ? ` · ${category}` : ''}</div>` : ''}
-    ${item.Level ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Level ${item.Level}</div>` : ''}
-    ${item.Value ? `<div style="font-size:11px;color:var(--gold-dim);margin-bottom:4px">${item.Value.toLocaleString()} 🪙</div>` : ''}
-    ${powers ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">${powers}</div>` : ''}
+    ${eqHtml}
     <div style="font-size:10px;color:var(--text-dim);margin-top:5px;font-style:italic">Double-click to ${sellGiftMarked.has(item.TypeID)?'unmark':'mark as important'}</div>`;
   document.body.appendChild(tip);
   const x = Math.min(e.clientX + 14, window.innerWidth - 340);
@@ -2639,6 +2651,19 @@ let tooltipTimer = null;
 function showItemTooltip(itemName, typeId, itemValue, e) {
   hideTooltip();
   tooltipTimer = setTimeout(() => {
+    // Look up raw inventory item for equipment stats (rarity, level, powers)
+    let eqItem = null;
+    if (typeId) {
+      const tid = String(typeId);
+      const searchChars = (activeCharId && activeCharId !== '__all__' && activeCharId !== '__sellgift__')
+        ? characters.filter(c => c.id === activeCharId)
+        : characters;
+      for (const c of searchChars) {
+        const found = (c.invData?.Items || []).find(it => String(it.TypeID) === tid);
+        if (found && (found.Rarity || found.TSysPowers?.length || found.Level)) { eqItem = found; break; }
+      }
+    }
+
     const recipes = getRecipesForItem(typeId);
     const maxStack = getMaxStack(itemName, typeId);
     // Find total qty across all visible items for value sum
@@ -2649,7 +2674,9 @@ function showItemTooltip(itemName, typeId, itemValue, e) {
     const valuePerItem = itemValue || 0;
     const totalValue = valuePerItem * totalQty;
 
-    if (!recipes.length && !maxStack && !valuePerItem && !dataLoaded.sources_items) return;
+    if (!eqItem && !recipes.length && !maxStack && !valuePerItem && !dataLoaded.sources_items) return;
+
+    const eqHtml = eqItem ? _buildEquipHtml(eqItem) : '';
 
     const recipesHtml = recipes.slice(0,5).map(rInternal => {
       const r = RECIPES[rInternal];
@@ -2671,12 +2698,15 @@ function showItemTooltip(itemName, typeId, itemValue, e) {
     const footerLine = [stackPart, valuePart].filter(Boolean).join('&ensp;·&ensp;');
     const stackHtml = footerLine ? `<div class="tooltip-stack">${footerLine}</div>` : '';
 
-    if (!recipesHtml && !stackHtml && !sourcesHtml) return;
+    if (!eqHtml && !recipesHtml && !stackHtml && !sourcesHtml) return;
+
+    const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
+    const titleColor = eqItem?.Rarity ? (rarityColors[eqItem.Rarity] || 'var(--text)') : 'var(--text)';
 
     const tip = document.createElement('div');
     tip.className = 'item-tooltip';
     tip.id = 'itemTooltip';
-    tip.innerHTML = `<div class="tooltip-title">${itemName}</div>${recipesHtml}${sourcesHtml}${stackHtml}`;
+    tip.innerHTML = `<div class="tooltip-title" style="color:${titleColor}">${itemName}</div>${eqHtml}${recipesHtml}${sourcesHtml}${stackHtml}`;
     document.body.appendChild(tip);
     positionTooltip(tip, e);
   }, 350);
