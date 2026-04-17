@@ -4603,6 +4603,7 @@ function showVaultFavorTooltip(npcKey, charNamesJson, e) {
 // ═══════════════════════════════════════════════════════════
 let recipeSkillFilter = '';
 let recipeSearchQ = '';
+let recipeSearchMode = 'name'; // 'name' | 'ingredient'
 let recipeSkillSort = null; // null | 'asc' | 'desc'
 
 let recipeShowLocked = 'known'; // 'known' | 'locked' | 'all'
@@ -5050,7 +5051,11 @@ function getRecipeDisplayList() {
   if (recipeSkillFilter) pool = pool.filter(([,r])=>r[1]===recipeSkillFilter);
   if (recipeSearchQ) {
     const q = recipeSearchQ.toLowerCase();
-    pool = pool.filter(([,r]) => r[0].toLowerCase().includes(q) || (r[5]||'').toLowerCase().includes(q));
+    if (recipeSearchMode === 'ingredient') {
+      pool = pool.filter(([,r]) => (r[2] || []).some(([ingId]) => (ITEMS[String(ingId)]?.[0] || '').toLowerCase().includes(q)));
+    } else {
+      pool = pool.filter(([,r]) => r[0].toLowerCase().includes(q) || (r[5]||'').toLowerCase().includes(q));
+    }
   }
   const known  = pool.filter(([k])=>allRecipeKeys.has(k));
   const locked = pool.filter(([k])=>!allRecipeKeys.has(k));
@@ -5089,9 +5094,13 @@ function renderRecipesTab() {
     <div class="recipe-controls">
       <div class="search-input-wrap" style="max-width:260px">
         <button class="search-clear ${recipeSearchQ?'visible':''}" id="recipeClearBtn" onclick="clearRecipeSearch()">✕</button>
-        <input class="search-input" id="recipeSearchInput" style="padding-left:34px" placeholder="Search recipes…"
+        <input class="search-input" id="recipeSearchInput" style="padding-left:34px" placeholder="${recipeSearchMode==='ingredient'?'Search ingredients…':'Search recipes…'}"
           value="${recipeSearchQ.replace(/"/g,'&quot;')}" oninput="onRecipeSearch(this.value)">
         <span class="search-icon">⌕</span>
+      </div>
+      <div class="mode-toggle" id="recipeSearchModeToggle">
+        <button class="mode-btn ${recipeSearchMode==='name'?'active':''}" onclick="setRecipeSearchMode('name')">Name</button>
+        <button class="mode-btn ${recipeSearchMode==='ingredient'?'active':''}" onclick="setRecipeSearchMode('ingredient')">Ingredient</button>
       </div>
       <select class="recipe-skill-filter" id="recipeSkillSelect" onchange="onRecipeSkillFilter(this.value)">
         <option value="">All Skills</option>${skillOpts}
@@ -5129,6 +5138,11 @@ function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCo
   // Update clear button visibility
   const clearBtn = document.getElementById('recipeClearBtn');
   if (clearBtn) clearBtn.classList.toggle('visible', !!recipeSearchQ);
+  // Update search mode toggle
+  const smToggle = document.getElementById('recipeSearchModeToggle');
+  if (smToggle) { smToggle.querySelectorAll('.mode-btn').forEach((b,i) => b.classList.toggle('active', i === (recipeSearchMode==='name'?0:1))); }
+  const inp = document.getElementById('recipeSearchInput');
+  if (inp) inp.placeholder = recipeSearchMode === 'ingredient' ? 'Search ingredients…' : 'Search recipes…';
   // Update table body (or swap empty state)
   const wrap = document.getElementById('recipeTableWrap');
   if (!wrap) return;
@@ -5174,6 +5188,11 @@ function onRecipeSearch(v) {
   updateRecipeBody(display, allRecipeKeys, known.length, locked.length);
 }
 function clearRecipeSearch() { recipeSearchQ = ''; renderRecipesTab(); }
+function setRecipeSearchMode(mode) {
+  recipeSearchMode = mode;
+  const { known, locked, display, allRecipeKeys } = getRecipeDisplayList();
+  updateRecipeBody(display, allRecipeKeys, known.length, locked.length);
+}
 function onRecipeSkillFilter(v) { recipeSkillFilter = v; renderRecipesTab(); }
 function cycleRecipeSkillSort() {
   recipeSkillSort = recipeSkillSort === null ? 'asc' : recipeSkillSort === 'asc' ? 'desc' : null;
