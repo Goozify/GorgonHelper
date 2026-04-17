@@ -499,6 +499,8 @@ let searchMode = 'single';
 let activeVaultFilter = null;
 let activeTownFilter = '';
 let showConsolidateOnly = false;
+let storageSortCol = 'name'; // 'name' | 'location' | 'total'
+let storageSortDir = 'asc';
 
 // Tools tab state
 let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening'
@@ -2497,6 +2499,30 @@ function calcVaultSlotInfo(vaultKey, charItems, charNPCs) {
   return { usedSlots, availSlots };
 }
 
+// Builds <th> elements for storage table columns with sort indicators.
+// cols: array of 'name'|'character'|'location'|'total'
+function storageThHtml(cols) {
+  const labels = { name:'Item', character:'Character', location:'Location', total:'Total' };
+  const sortable = new Set(['name','location','total']);
+  return cols.map(col => {
+    if (!sortable.has(col)) return `<th>${labels[col]}</th>`;
+    const active = storageSortCol === col;
+    const arrow = active ? (storageSortDir === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
+    const style = `cursor:pointer;user-select:none${active?';color:var(--gold-light)':''}`;
+    const cls = col === 'total' ? ' class="r"' : '';
+    return `<th${cls} style="${style}" onclick="cycleStorageSort('${col}')">${labels[col]}<span style="font-size:10px;opacity:${active?1:.4}">${arrow}</span></th>`;
+  }).join('');
+}
+function cycleStorageSort(col) {
+  if (storageSortCol === col) {
+    storageSortDir = storageSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    storageSortCol = col;
+    storageSortDir = col === 'total' ? 'desc' : 'asc';
+  }
+  if (activeCharId === '__all__') renderRightAll();
+  else { const c = characters.find(ch => ch.id === activeCharId); if (c) renderRight(c); }
+}
 function renderRight(char) {
   const q = searchQuery.toLowerCase().trim();
   const allVaults = [...new Set(char.items.flatMap(i=>Object.keys(i.vaults)))]
@@ -2510,19 +2536,29 @@ function renderRight(char) {
   if (townVaultSet) items = items.filter(i=>Object.keys(i.vaults).some(v=>townVaultSet.has(v)));
   if (activeVaultFilter) items = items.filter(i=>i.vaults[activeVaultFilter]!==undefined);
   if (showConsolidateOnly) items = items.filter(i=>getConsolidationInfo(i.name,i.vaults,i.typeId));
-  const rows = items.map(i => {
-    // When a location or vault filter is active, restrict displayed vault chips and total
-    // to only the matching vaults so the count reflects the filtered view, not the global total.
+  // Compute filtered vault/total per item (needed for sorting + rendering)
+  let itemsWithFt = items.map(i => {
     let fv = townVaultSet ? Object.fromEntries(Object.entries(i.vaults).filter(([v]) => townVaultSet.has(v))) : i.vaults;
     if (activeVaultFilter) fv = Object.fromEntries(Object.entries(fv).filter(([v]) => v === activeVaultFilter));
     const ft = Object.values(fv).reduce((s, n) => s + n, 0);
-    return renderItemRow(i.name, fv, ft, i.typeId, i.value, q, null, getConsolidationInfo(i.name, i.vaults, i.typeId));
-  }).join('');
-  const totalValue = items.reduce((s, i) => {
-    let fv = townVaultSet ? Object.entries(i.vaults).filter(([v]) => townVaultSet.has(v)) : Object.entries(i.vaults);
-    if (activeVaultFilter) fv = fv.filter(([v]) => v === activeVaultFilter);
-    return s + (i.value || 0) * fv.reduce((sum, [, n]) => sum + n, 0);
-  }, 0);
+    return { i, fv, ft };
+  });
+  // Apply column sort
+  if (storageSortCol === 'total') {
+    itemsWithFt.sort((a, b) => storageSortDir === 'asc' ? a.ft - b.ft : b.ft - a.ft);
+  } else if (storageSortCol === 'location') {
+    itemsWithFt.sort((a, b) => {
+      const va = Object.keys(a.fv)[0] || '', vb = Object.keys(b.fv)[0] || '';
+      return storageSortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  } else if (storageSortDir === 'desc') { // name desc
+    itemsWithFt.sort((a, b) => b.i.name.localeCompare(a.i.name));
+  }
+  const rows = itemsWithFt.map(({ i, fv, ft }) =>
+    renderItemRow(i.name, fv, ft, i.typeId, i.value, q, null, getConsolidationInfo(i.name, i.vaults, i.typeId))
+  ).join('');
+  const totalValue = itemsWithFt.reduce((s, { i, fv }) =>
+    s + (i.value || 0) * Object.values(fv).reduce((sum, n) => sum + n, 0), 0);
   const totalValueHtml = totalValue > 0
     ? `<div style="margin-bottom:8px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
@@ -2555,7 +2591,7 @@ function renderRight(char) {
     ${renderVaultFilters(allVaults)}
     ${totalValueHtml}${slotInfoHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
-    :`<table class="inv-table"><thead><tr><th>Item</th><th>Location</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody></table>`}`;
+    :`<table class="inv-table"><thead><tr>${storageThHtml(['name','location','total'])}</tr></thead><tbody>${rows}</tbody></table>`}`;
   restoreFocus(q);
 }
 
@@ -2586,6 +2622,29 @@ function renderRightAll() {
   if (q) items = items.filter(i=>i.name.toLowerCase().includes(q));
   if (townVaultSet) items = items.filter(i=>Object.values(i.byChar).some(cd=>Object.keys(cd.vaults).some(v=>townVaultSet.has(v))));
   if (showConsolidateOnly) items = items.filter(i=>Object.values(i.byChar).some(cd=>getConsolidationInfo(i.name,cd.vaults,i.typeId)));
+  // Compute per-item filtered total for sorting
+  const getItemFilteredTotal = item => townVaultSet
+    ? Object.values(item.byChar).reduce((s, cd) => s + Object.entries(cd.vaults).filter(([v]) => townVaultSet.has(v)).reduce((t,[,n])=>t+n,0), 0)
+    : item.total;
+  const getItemFirstVault = item => {
+    for (const cd of Object.values(item.byChar)) {
+      const vaults = townVaultSet ? Object.keys(cd.vaults).filter(v=>townVaultSet.has(v)) : Object.keys(cd.vaults);
+      if (vaults.length) return vaults[0];
+    }
+    return '';
+  };
+  if (storageSortCol === 'total') {
+    items = [...items].sort((a, b) => storageSortDir === 'asc'
+      ? getItemFilteredTotal(a) - getItemFilteredTotal(b)
+      : getItemFilteredTotal(b) - getItemFilteredTotal(a));
+  } else if (storageSortCol === 'location') {
+    items = [...items].sort((a, b) => {
+      const va = getItemFirstVault(a), vb = getItemFirstVault(b);
+      return storageSortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  } else if (storageSortDir === 'desc') { // name desc
+    items = [...items].sort((a, b) => b.name.localeCompare(a.name));
+  }
   const rows = items.flatMap(item => {
     // In town-filter mode, only show the char rows that have items in that town
     const charEntries = townVaultSet
@@ -2598,13 +2657,7 @@ function renderRightAll() {
       return renderItemRow(item.name, fv, ft, item.typeId, item.value, q, cd.charName, getConsolidationInfo(item.name, cd.vaults, item.typeId));
     });
   }).join('');
-  const totalValue = items.reduce((s, i) => {
-    const filteredTotal = townVaultSet
-      ? Object.values(i.byChar).reduce((sum, cd) =>
-          sum + Object.entries(cd.vaults).filter(([v]) => townVaultSet.has(v)).reduce((t, [, n]) => t + n, 0), 0)
-      : i.total;
-    return s + (i.value || 0) * filteredTotal;
-  }, 0);
+  const totalValue = items.reduce((s, i) => s + (i.value || 0) * getItemFilteredTotal(i), 0);
   const totalValueHtml = totalValue > 0
     ? `<div style="margin-bottom:10px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
@@ -2622,7 +2675,7 @@ function renderRightAll() {
     ${renderVaultFilters([])}
     ${totalValueHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
-    :`<table class="inv-table"><thead><tr><th>Item</th><th>Character</th><th>Location</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody></table>`}`;
+    :`<table class="inv-table"><thead><tr>${storageThHtml(['name','character','location','total'])}</tr></thead><tbody>${rows}</tbody></table>`}`;
   restoreFocus(q);
 }
 
