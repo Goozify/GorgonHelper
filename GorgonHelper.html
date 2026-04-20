@@ -5300,8 +5300,10 @@ function getRecipeSkillLevelHtml() {
   const char = characters.find(c => c.id === activeCharId);
   const s = char?.charData?.Skills?.[recipeSkillFilter];
   if (!s) return '';
-  const level = (s.Level || 0) + (s.BonusLevels || 0);
-  return `Lvl <span style="color:var(--gold);font-weight:600">${level}</span>`;
+  const base = s.Level || 0;
+  const bonus = s.BonusLevels || 0;
+  const bonusHtml = bonus > 0 ? ` <span style="font-size:13px;color:var(--text-dim)">+${bonus}</span>` : '';
+  return `Lvl <span style="color:var(--gold);font-weight:600">${base}</span>${bonusHtml}`;
 }
 
 function setRecipeLocked(v) { recipeShowLocked = v; renderRecipesTab(); }
