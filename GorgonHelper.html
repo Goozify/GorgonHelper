@@ -185,10 +185,12 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .sg-chip-sell{background:rgba(180,140,20,.18);border-color:rgba(200,160,40,.5);color:#c8a830}
 .sg-chip-gift{background:rgba(200,60,100,.18);border-color:rgba(200,80,100,.5);color:#e07080}
 .sg-chip-both{background:rgba(140,60,180,.18);border-color:rgba(160,80,200,.5);color:#c080e0}
+.sg-chip-store{background:rgba(30,160,150,.18);border-color:rgba(50,180,170,.5);color:#40ccc0}
 /* item highlight in area mode */
 .sg-item.sg-hl-sell{border-color:rgba(210,170,40,.95)!important;box-shadow:0 0 5px rgba(210,170,40,.4)}
 .sg-item.sg-hl-gift{border-color:rgba(210,70,100,.95)!important;box-shadow:0 0 5px rgba(210,70,100,.4)}
 .sg-item.sg-hl-both{border-color:rgba(170,80,220,.95)!important;box-shadow:0 0 6px rgba(170,80,220,.45)}
+.sg-item.sg-hl-store{border-color:rgba(40,200,190,.95)!important;box-shadow:0 0 5px rgba(40,200,190,.4)}
 .sg-item.sg-hl-none{opacity:.22}
 
 /* ── Work Orders ── */
@@ -1596,7 +1598,7 @@ function renderCharTabs() {
     + ((isWO || isVault || isFavor || isQuest || isRecipes) && characters.length > 1 ? `<div class="char-tab all-tab ${activeCharId==='__all__'?'active':''}" onclick="setActiveChar('__all__')">All Characters</div>` : '')
     + (isWO ? `<div class="char-tab ${activeCharId==='__availwo__'?'active':''}" onclick="setActiveChar('__availwo__')" title="Work Order scrolls in storage">📜 Available</div>` : '')
     + (isFavor ? `<div class="char-tab ${activeCharId==='__favorcalc__'?'active':''}" onclick="setActiveChar('__favorcalc__')" title="Favor Calculator"><span style="color:var(--gold);font-size:16px;line-height:1">Σ</span> Calculator</div>` : '')
-    + (mainTab === 'storage' && characters.length > 0 ? `<div class="char-tab ${activeCharId==='__sellgift__'?'active':''}" onclick="setActiveChar('__sellgift__')" title="Find NPCs to sell or gift items to">Sell & Gift</div>` : '')
+    + (mainTab === 'storage' && characters.length > 0 ? `<div class="char-tab ${activeCharId==='__sellgift__'?'active':''}" onclick="setActiveChar('__sellgift__')" title="Clear your inventory — sell, gift, or store items">Clear Inventory</div>` : '')
     + `<div class="char-tab add-tab" onclick="pickFolder()" title="Watch folder">＋</div>`;
 }
 
@@ -1881,6 +1883,34 @@ function sgBuildNpcItemMap(items) {
   return map;
 }
 
+function sgBuildStoreMap(items) {
+  // Returns { vaultKey -> { vaultName, area, items: Set<idx> } }
+  // Only covers vaults that actually contain the same item type (helps you "take it home").
+  const char = characters.find(c => c.id === sellGiftCharId);
+  if (!char) return {};
+  // Build typeId → Set<vaultKey> from all non-inventory, non-saddlebag slots
+  const tidToVaults = {};
+  for (const it of (char.invData?.Items || [])) {
+    if (it.IsInInventory) continue;
+    const vault = it.StorageVault;
+    if (!vault || vault === 'Saddlebag') continue;
+    if (!tidToVaults[it.TypeID]) tidToVaults[it.TypeID] = new Set();
+    tidToVaults[it.TypeID].add(vault);
+  }
+  const map = {};
+  items.forEach((it, idx) => {
+    if (sellGiftMarked.has(it.TypeID)) return;
+    const vaults = tidToVaults[it.TypeID];
+    if (!vaults) return;
+    for (const vault of vaults) {
+      const area = getVaultTown(vault) || 'Unknown';
+      if (!map[vault]) map[vault] = { vaultName: fvn(vault), area, items: new Set() };
+      map[vault].items.add(idx);
+    }
+  });
+  return map;
+}
+
 function sgToggleMark(typeId) {
   if (sellGiftMarked.has(typeId)) sellGiftMarked.delete(typeId);
   else sellGiftMarked.add(typeId);
@@ -2067,7 +2097,8 @@ function renderSellGiftTab() {
 
   // ── Item grid ──────────────────────────────────────────────
   let gridHtml = '';
-  let npcItemMap = null; // built only in area mode
+  let npcItemMap = null; // built only in area mode (sell/gift/both)
+  let storeMap = null;   // built only in area mode + store filter
   if (char) {
     const rawItems = (char.invData?.Items || [])
       .filter(it => it.IsInInventory === true || (sellGiftSaddlebag && it.StorageVault === 'Saddlebag'))
@@ -2075,29 +2106,38 @@ function renderSellGiftTab() {
     if (rawItems.length === 0) {
       gridHtml = `<div style="padding:20px;color:var(--text-dim);font-size:13px">No inventory items found.</div>`;
     } else {
-      // In area mode, build reverse map and compute highlight per item index
-      let hlSell = null, hlGift = null;
+      // In area mode, build reverse maps and compute highlight per item index
+      let hlSell = null, hlGift = null, hlStore = null;
       if (sellGiftMode === 'area') {
-        npcItemMap = sgBuildNpcItemMap(rawItems);
-        if (sellGiftAreaNpcKey && npcItemMap[sellGiftAreaNpcKey]) {
-          // Specific NPC selected — highlight just that NPC's items
-          hlSell = npcItemMap[sellGiftAreaNpcKey].sell;
-          hlGift = npcItemMap[sellGiftAreaNpcKey].gift;
-        } else if (sellGiftAreaFilter) {
-          // Legend filter active — aggregate across all matching NPCs
-          const aggSell = new Set(), aggGift = new Set();
-          for (const data of Object.values(npcItemMap)) {
-            const hasSell = data.sell.size > 0, hasGift = data.gift.size > 0;
-            const match = sellGiftAreaFilter === 'sell' ? (hasSell && !hasGift)
-                        : sellGiftAreaFilter === 'gift' ? (!hasSell && hasGift)
-                        : (hasSell && hasGift); // 'both'
-            if (match) {
-              data.sell.forEach(i => aggSell.add(i));
-              data.gift.forEach(i => aggGift.add(i));
-            }
+        if (sellGiftAreaFilter === 'store') {
+          storeMap = sgBuildStoreMap(rawItems);
+          if (sellGiftAreaNpcKey && storeMap[sellGiftAreaNpcKey]) {
+            hlStore = storeMap[sellGiftAreaNpcKey].items;
+          } else {
+            const agg = new Set();
+            for (const d of Object.values(storeMap)) d.items.forEach(i => agg.add(i));
+            if (agg.size) hlStore = agg;
           }
-          if (aggSell.size) hlSell = aggSell;
-          if (aggGift.size) hlGift = aggGift;
+        } else {
+          npcItemMap = sgBuildNpcItemMap(rawItems);
+          if (sellGiftAreaNpcKey && npcItemMap[sellGiftAreaNpcKey]) {
+            hlSell = npcItemMap[sellGiftAreaNpcKey].sell;
+            hlGift = npcItemMap[sellGiftAreaNpcKey].gift;
+          } else if (sellGiftAreaFilter) {
+            const aggSell = new Set(), aggGift = new Set();
+            for (const data of Object.values(npcItemMap)) {
+              const hasSell = data.sell.size > 0, hasGift = data.gift.size > 0;
+              const match = sellGiftAreaFilter === 'sell' ? (hasSell && !hasGift)
+                          : sellGiftAreaFilter === 'gift' ? (!hasSell && hasGift)
+                          : (hasSell && hasGift); // 'both'
+              if (match) {
+                data.sell.forEach(i => aggSell.add(i));
+                data.gift.forEach(i => aggGift.add(i));
+              }
+            }
+            if (aggSell.size) hlSell = aggSell;
+            if (aggGift.size) hlGift = aggGift;
+          }
         }
       }
       gridHtml = `<div class="sg-grid">` + rawItems.map((it, idx) => {
@@ -2108,7 +2148,9 @@ function renderSellGiftTab() {
         const rarity = it.Rarity || '';
         const rarClass = rarity ? ` sg-r-${rarity}` : '';
         let hlClass = '';
-        if (hlSell || hlGift) {
+        if (hlStore) {
+          hlClass = hlStore.has(idx) ? ' sg-hl-store' : ' sg-hl-none';
+        } else if (hlSell || hlGift) {
           const inSell = hlSell?.has(idx), inGift = hlGift?.has(idx);
           if (inSell && inGift) hlClass = ' sg-hl-both';
           else if (inSell)      hlClass = ' sg-hl-sell';
@@ -2134,27 +2176,60 @@ function renderSellGiftTab() {
     gridHtml = `<div style="padding:20px;color:var(--text-dim);font-size:13px">Select a character above.</div>`;
   }
 
-  // ── NPC panel / Area panel ────────────────────────────────
+  // ── NPC / Store / Area panel ─────────────────────────────
   let npcHtml = '';
   if (sellGiftMode === 'area') {
-    if (!npcItemMap || Object.keys(npcItemMap).length === 0) {
-      npcHtml = `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
+    const _fSell = sellGiftAreaFilter === 'sell', _fGift = sellGiftAreaFilter === 'gift',
+          _fBoth = sellGiftAreaFilter === 'both', _fStore = sellGiftAreaFilter === 'store';
+    const legend = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;max-width:600px">
+      <span style="color:var(--text-dim)">Filter by type:</span>
+      <span class="sg-chip sg-chip-sell${_fSell?' active':''}" onclick="sgSetAreaFilter('sell')" title="Show sell-only NPCs">Sell</span>
+      <span class="sg-chip sg-chip-gift${_fGift?' active':''}" onclick="sgSetAreaFilter('gift')" title="Show gift-only NPCs">Gift</span>
+      <span class="sg-chip sg-chip-both${_fBoth?' active':''}" onclick="sgSetAreaFilter('both')" title="Show NPCs you can both sell to and gift">Both</span>
+      <span class="sg-chip sg-chip-store${_fStore?' active':''}" onclick="sgSetAreaFilter('store')" title="Show storage locations that already hold these items">Store</span>
+    </div>`;
+
+    if (_fStore) {
+      // ── Storage vault panel ──────────────────────────────
+      if (!storeMap || Object.keys(storeMap).length === 0) {
+        npcHtml = legend + `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
+          <div style="font-size:28px;margin-bottom:8px">📦</div>None of your inventory items have an existing storage location.</div>`;
+      } else {
+        const byArea = {};
+        for (const [vaultKey, data] of Object.entries(storeMap)) {
+          if (!byArea[data.area]) byArea[data.area] = [];
+          byArea[data.area].push({ vaultKey, ...data });
+        }
+        const vaultBlocks = Object.keys(byArea).sort().map(area => {
+          const vaults = byArea[area].sort((a, b) => a.vaultName.localeCompare(b.vaultName));
+          const isOpen = sellGiftOpenAreas.has(area);
+          const totalItems = new Set(vaults.flatMap(v => [...v.items])).size;
+          const areaKey = area.replace(/'/g, "\\'");
+          const hdr = `<div class="sg-area-hdr${isOpen?' open':''}" onclick="sgToggleArea('${areaKey}')">
+            <span>${area} <span style="font-size:9px;color:var(--text-dim);font-family:'Crimson Pro',serif;letter-spacing:0;text-transform:none;margin-left:6px">${totalItems} item type${totalItems!==1?'s':''}</span></span>
+            <span style="font-size:10px;opacity:.6">${isOpen ? '▲' : '▼'}</span>
+          </div>`;
+          if (!isOpen) return hdr;
+          const chips = vaults.map(v => {
+            const isActive = sellGiftAreaNpcKey === v.vaultKey;
+            const safeKey = v.vaultKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+            return `<span class="sg-chip sg-chip-store${isActive?' active':''}" onclick="sgSelectAreaNpc('${safeKey}')">${v.vaultName} <span style="opacity:.65;font-size:10px">${v.items.size}</span></span>`;
+          }).join('');
+          return hdr + `<div class="sg-chip-row">${chips}</div>`;
+        }).join('');
+        npcHtml = legend + vaultBlocks;
+      }
+    } else if (!npcItemMap || Object.keys(npcItemMap).length === 0) {
+      npcHtml = legend + `<div style="color:var(--text-dim);font-size:13px;padding-top:20px;text-align:center;opacity:.6">
         <div style="font-size:28px;margin-bottom:8px">🗺</div>No items in inventory — select a character above.</div>`;
     } else {
-      // Group NPCs by area
+      // ── NPC area panel ───────────────────────────────────
       const byArea = {};
       for (const [npcKey, data] of Object.entries(npcItemMap)) {
         const area = data.area || 'Unknown';
         if (!byArea[area]) byArea[area] = [];
         byArea[area].push({ npcKey, ...data });
       }
-      const _fSell = sellGiftAreaFilter === 'sell', _fGift = sellGiftAreaFilter === 'gift', _fBoth = sellGiftAreaFilter === 'both';
-      const legend = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:11px;max-width:600px">
-        <span style="color:var(--text-dim)">Filter by type:</span>
-        <span class="sg-chip sg-chip-sell${_fSell?' active':''}" onclick="sgSetAreaFilter('sell')" title="Show sell-only NPCs">Sell</span>
-        <span class="sg-chip sg-chip-gift${_fGift?' active':''}" onclick="sgSetAreaFilter('gift')" title="Show gift-only NPCs">Gift</span>
-        <span class="sg-chip sg-chip-both${_fBoth?' active':''}" onclick="sgSetAreaFilter('both')" title="Show NPCs you can both sell to and gift">Both</span>
-      </div>`;
       const sgPinnedNpcs = getPinnedNpcs(sellGiftCharId);
       const areaBlocks = Object.keys(byArea).sort().map(area => {
         const allNpcs = byArea[area].sort((a,b) => {
@@ -2162,22 +2237,18 @@ function renderSellGiftTab() {
           const bp = sgPinnedNpcs.has(b.npcKey) ? 0 : 1;
           return ap - bp || a.npcName.localeCompare(b.npcName);
         });
-        // Apply legend filter
-        const npcs = sellGiftAreaFilter ? allNpcs.filter(n => {
+        const npcs = (_fSell || _fGift || _fBoth) ? allNpcs.filter(n => {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           if (_fSell) return hasSell && !hasGift;
           if (_fGift) return !hasSell && hasGift;
           if (_fBoth) return hasSell && hasGift;
           return true;
         }) : allNpcs;
-        if (npcs.length === 0) return ''; // hide area if no NPCs match filter
+        if (npcs.length === 0) return '';
         const isOpen = sellGiftOpenAreas.has(area);
         const sellCount = npcs.filter(n => n.sell.size > 0).length;
         const giftCount = npcs.filter(n => n.gift.size > 0).length;
-        const summary = [
-          sellCount ? `${sellCount} sell` : '',
-          giftCount ? `${giftCount} gift` : ''
-        ].filter(Boolean).join(' · ');
+        const summary = [sellCount ? `${sellCount} sell` : '', giftCount ? `${giftCount} gift` : ''].filter(Boolean).join(' · ');
         const areaKey = area.replace(/'/g, "\\'");
         const hdr = `<div class="sg-area-hdr${isOpen?' open':''}" onclick="sgToggleArea('${areaKey}')">
           <span>${area} <span style="font-size:9px;color:var(--text-dim);font-family:'Crimson Pro',serif;letter-spacing:0;text-transform:none;margin-left:6px">${summary}</span></span>
@@ -2188,9 +2259,7 @@ function renderSellGiftTab() {
           const hasSell = n.sell.size > 0, hasGift = n.gift.size > 0;
           const cls = hasSell && hasGift ? 'sg-chip-both' : hasSell ? 'sg-chip-sell' : 'sg-chip-gift';
           const isActive = sellGiftAreaNpcKey === n.npcKey;
-          const starHtml = sgPinnedNpcs.has(n.npcKey)
-            ? `<span style="color:var(--gold);font-size:10px;line-height:1;margin-right:1px">★</span>`
-            : '';
+          const starHtml = sgPinnedNpcs.has(n.npcKey) ? `<span style="color:var(--gold);font-size:10px;line-height:1;margin-right:1px">★</span>` : '';
           return `<span class="sg-chip ${cls}${isActive?' active':''}" onclick="sgSelectAreaNpc('${n.npcKey}')" onmouseenter="sgShowNpcTooltip(event,'${n.npcKey}')" onmouseleave="sgHideNpcTooltip()">${starHtml}${n.npcName}</span>`;
         }).join('');
         return hdr + `<div class="sg-chip-row">${chips}</div>`;
