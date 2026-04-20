@@ -23,6 +23,11 @@ COLLECTED_RE = re.compile(r"\[Status\] (.+?)(?:\s+x(\d+))? collected!")
 # Item added to inventory: "[Status] X added to inventory." or "X x2 added to inventory."
 ADDED_RE = re.compile(r"\[Status\] (.+?)(?:\s+x(\d+))? added to inventory\.")
 
+# Treasure Cartography completion: fired when you use a map at the dig site.
+# The XP amount varies, so we match any number.  Using the skill name makes
+# this more specific than "You dig until you find something!" alone.
+TC_COMPLETE_RE = re.compile(r"\[Status\] You earned \d+ XP in Treasure Cartography\b")
+
 
 def find_newest_log(log_dir: str) -> str | None:
     pattern = os.path.join(log_dir, "Chat-*.log")
@@ -145,3 +150,10 @@ class ChatWatcher(QThread):
             # moment as the "collected!" summary; the server uses a backward
             # time window to attribute only those items to the current survey.
             self.loot_received.emit(name, qty)
+            return
+
+        if TC_COMPLETE_RE.search(line):
+            # Treasure Cartography has no item name in the completion message —
+            # emit the sentinel so the server marks the pending location visited
+            # without doing a name-match check.
+            self.survey_completed.emit("__tc_complete__")

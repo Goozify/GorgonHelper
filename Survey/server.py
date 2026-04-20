@@ -768,10 +768,13 @@ class SurveyServer:
 
         # Guard: only mark if the completed item matches the pending survey item.
         # Enemy loot also fires survey_completed ("You receive Hops") — reject those.
-        if self._normalize_item_name(item_name) != self._normalize_item_name(loc.item_name):
-            log.debug("COMPLETED item=%r doesn't match %r — ignoring (enemy loot?)",
-                      item_name, loc.item_name)
-            return
+        # Exception: Treasure Cartography uses a sentinel because its completion
+        # message contains no item name — skip the name check in that case.
+        if item_name != "__tc_complete__":
+            if self._normalize_item_name(item_name) != self._normalize_item_name(loc.item_name):
+                log.debug("COMPLETED item=%r doesn't match %r — ignoring (enemy loot?)",
+                          item_name, loc.item_name)
+                return
 
         # Clear pending / grace state.
         # When the *active* pending is marked we also wipe the grace ref so that
