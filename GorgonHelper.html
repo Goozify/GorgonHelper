@@ -1900,6 +1900,7 @@ function sgBuildStoreMap(items) {
   const map = {};
   items.forEach((it, idx) => {
     if (sellGiftMarked.has(it.TypeID)) return;
+    if (sgItemCategory(String(it.TypeID)) !== null) return; // skip weapons, armor, jewelry
     const vaults = tidToVaults[it.TypeID];
     if (!vaults) return;
     for (const vault of vaults) {
