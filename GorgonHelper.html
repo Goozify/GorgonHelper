@@ -4173,9 +4173,21 @@ function parsePlayerLogLines(lines) {
                   || line.match(/Dealer.{0,30}?(\d+)/i);
           if (dm) dealerScore = +dm[1];
 
-          _diceParseNote = `initial: indices=[${allIndices}] dealer=${dealerScore} player=${playerScore}`;
+          // Detect interim screens (e.g. after clicking Raise Bet): the same
+          // red-dice sprites and dealer score reappear in a new ProcessTalkScreen
+          // but it is still the same round.  Overwriting the state here would
+          // change the overlay recommendation mid-action, so skip the update.
+          const isInterim = dealerScore !== null
+            && diceGameState && !diceGameState.outcome
+            && diceGameState.dealerScore === dealerScore
+            && diceGameState.redFaces.length === allIndices.length
+            && diceGameState.redFaces.every((f, i) => f === allIndices[i]);
 
-          if (dealerScore !== null) {
+          _diceParseNote = isInterim
+            ? `interim screen (same dice [${allIndices}] / dealer ${dealerScore}) — kept existing state`
+            : `initial: indices=[${allIndices}] dealer=${dealerScore} player=${playerScore}`;
+
+          if (dealerScore !== null && !isInterim) {
             diceGameState = {
               playerScore,
               dealerScore,
