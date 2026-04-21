@@ -507,6 +507,7 @@ let storageSortDir = 'asc';
 // Tools tab state
 let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening' | 'dice'
 let diceGameState = null; // { playerScore, dealerScore, redFaces: number[], ts: number } | null
+let diceRefreshTimer = null; // ticks the result screen counter + auto-clears stale results
 
 // Gardening tab state
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
@@ -4103,31 +4104,38 @@ function parsePlayerLogLines(lines) {
 
     // ── Dice Game ─────────────────────────────────────────────────────────────
     if (line.includes('"Dice Game"')) {
-      // ── Result screen: "Your score: N\nDealer score: N\n\nYOU WIN/LOSE" ──
-      // \n appears as the literal two-char sequence \n in the log line.
-      const resM = line.match(/Your score:\s*(\d+)\\nDealer score:\s*(\d+)\\n\\n(YOU WIN|YOU LOSE)/);
-      if (resM) {
-        diceGameState = {
-          ...(diceGameState || {}),
-          finalPlayerScore: +resM[1],
-          finalDealerScore: +resM[2],
-          outcome: resM[3] === 'YOU WIN' ? 'win' : 'lose',
-          ts: Date.now(),
-        };
-        vendorCount++;
-        if (mainTab === 'tools' && toolsSubTab === 'dice') {
-          const tc = document.getElementById('toolsContent');
-          if (tc) renderDiceTab(tc);
+      // ── Result screen: uniquely identified by YOU WIN / YOU LOSE being present ──
+      // (The result screen also has "Your score: N" and "Dealer score: N" as plain text.)
+      if (/YOU WIN|YOU LOSE/.test(line)) {
+        const psM = line.match(/Your score:\s*(\d+)/);
+        const dsM = line.match(/Dealer score:\s*(\d+)/);
+        if (psM && dsM) {
+          diceGameState = {
+            ...(diceGameState || {}),
+            finalPlayerScore: +psM[1],
+            finalDealerScore: +dsM[1],
+            outcome: /YOU WIN/.test(line) ? 'win' : 'lose',
+            ts: Date.now(),
+          };
+          vendorCount++;
+          if (mainTab === 'tools' && toolsSubTab === 'dice') {
+            const tc = document.getElementById('toolsContent');
+            if (tc) renderDiceTab(tc);
+            _diceStartResultTimer(); // keep result age counter ticking
+          }
         }
       }
-      // ── Initial game screen: "Your score from red dice is ... = <color=red>TOTAL" ──
-      // Each die may be in its own <color=red>...</color> span, so slice the line from
-      // "Your score from red dice is" to "= <color=red>TOTAL" and scan all index=N values.
-      else {
+      // ── Initial game screen: "Your score from red dice is …" ──
+      // Colour tags may be named (red/yellow) or hex (#RRGGBB) — use [^>]+ to match either.
+      // Each die may live in its own <color=…> span so we slice from "Your score from red
+      // dice is" up to the "= <color=…>TOTAL" marker and scan all index=N in that region.
+      else if (line.includes('Your score from red dice is')) {
         const diceStart  = line.indexOf('Your score from red dice is');
-        const playerTotM = line.match(/=\s*<color=red>(\d+)<\/color>/);
-        const dealerScM  = line.match(/Dealer.s score is <color=yellow>(\d+)<\/color>/);
-        if (diceStart >= 0 && playerTotM && dealerScM) {
+        // Take the LAST "= <color=…>N</color>" in the line — that is the running total.
+        const allTotals  = [...line.matchAll(/=\s*<color=[^>]+>(\d+)<\/color>/g)];
+        const playerTotM = allTotals.length ? allTotals[allTotals.length - 1] : null;
+        const dealerScM  = line.match(/Dealer.s score is <color=[^>]+>(\d+)<\/color>/);
+        if (playerTotM && dealerScM) {
           const totIdx      = line.indexOf(playerTotM[0], diceStart);
           const diceSection = totIdx > diceStart ? line.slice(diceStart, totIdx) : line.slice(diceStart);
           const faces = [...diceSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
@@ -7560,11 +7568,33 @@ function stopGardenRefresh() {
   if (gardenRefreshTimer) { clearInterval(gardenRefreshTimer); gardenRefreshTimer = null; }
 }
 
+function _diceStartResultTimer() {
+  // Runs a 1-second interval while the result screen is showing.
+  // Updates the "X seconds ago" counter and auto-clears after 45 s so the
+  // board resets for the next game even if the initial-screen log line is missed.
+  if (diceRefreshTimer) return; // already running
+  diceRefreshTimer = setInterval(() => {
+    if (mainTab !== 'tools' || toolsSubTab !== 'dice' || !diceGameState?.outcome) {
+      clearInterval(diceRefreshTimer); diceRefreshTimer = null; return;
+    }
+    if (Date.now() - diceGameState.ts > 45000) {
+      diceGameState = null;
+      clearInterval(diceRefreshTimer); diceRefreshTimer = null;
+    }
+    const tc = document.getElementById('toolsContent');
+    if (tc) renderDiceTab(tc);
+  }, 1000);
+}
+
 function setToolsSubTab(tab) {
   toolsSubTab = tab;
   if (tab === 'survey') surveyConnect();
   else window.removeEventListener('resize', surveySizeContainer);
   if (tab === 'gardening') { pruneWitheredPlots(); startGardenRefresh(); } else stopGardenRefresh();
+  // Stop any running dice result timer when leaving the dice tab
+  if (tab !== 'dice' && diceRefreshTimer) { clearInterval(diceRefreshTimer); diceRefreshTimer = null; }
+  // If there's already a result on screen, start the ticker immediately
+  if (tab === 'dice' && diceGameState?.outcome) _diceStartResultTimer();
   renderToolsTab();
 }
 
@@ -8552,8 +8582,9 @@ function surveyRegionInput(purpose, field, value) {
 // ═══════════════════════════════════════════════════════════
 
 function _diceContrib(face, redFaceSet) {
-  // If the rolled face value matches any initial red die → invert (subtract)
-  return redFaceSet.has(face) ? -face : face;
+  // Extra dice are worth double their face value.
+  // If the face matches an initial red die the value is inverted (−2× instead of +2×).
+  return (redFaceSet.has(face) ? -face : face) * 2;
 }
 
 function _diceWinP(playerFinal, dealerCurrent) {
@@ -8751,7 +8782,7 @@ function renderDiceTab(targetEl) {
     <div style="font-size:10px;color:var(--text-dim);margin-top:12px;line-height:1.6">
       Win%: probability player final score beats dealer final score (dealer always adds 2d6).<br>
       EV assumes normal win +2 000 / lose −1 000; Raise win +6 000 / lose −2 000 coins.<br>
-      Re-rolled dice showing a value from your original throw are subtracted instead of added.
+      Extra dice count double (×2). If the face matches an initial red die value it is −2× instead.
     </div>
   </div>`;
 }
