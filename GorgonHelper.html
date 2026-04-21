@@ -505,7 +505,8 @@ let storageSortCol = 'name'; // 'name' | 'location' | 'total'
 let storageSortDir = 'asc';
 
 // Tools tab state
-let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening'
+let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening' | 'dice'
+let diceGameState = null; // { playerScore, dealerScore, redFaces: number[], ts: number } | null
 
 // Gardening tab state
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
@@ -670,6 +671,7 @@ function _wsHandleMsg(msg) {
     savePlayerLogData();
     if (count > 0 && mainTab === 'favors') renderFavorsTab();
     if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
     if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
   }
 }
@@ -4098,6 +4100,24 @@ function parsePlayerLogLines(lines) {
         }
       }
     }
+
+    // ── Dice Game ─────────────────────────────────────────────────────────────
+    // ProcessTalkScreen(-346, "Dice Game", "Your score from red dice is <color=red>...<sprite=...index=N...> + ... = <color=red>TOTAL</color>\n\nDealer's score is <color=yellow>DEALER</color>...")
+    if (line.includes('"Dice Game"')) {
+      const redSectM  = line.match(/Your score from red dice is <color=red>(.*?)<\/color>/);
+      const playerTotM = line.match(/=\s*<color=red>(\d+)<\/color>/);
+      const dealerScM  = line.match(/Dealer.s score is <color=yellow>(\d+)<\/color>/);
+      if (redSectM && playerTotM && dealerScM) {
+        const faces = [...redSectM[1].matchAll(/index=(\d+)/g)].map(x => +x[1]);
+        diceGameState = {
+          playerScore: +playerTotM[1],
+          dealerScore: +dealerScM[1],
+          redFaces: faces,
+          ts: Date.now(),
+        };
+        vendorCount++;
+      }
+    }
   }
   // End-of-batch: add remaining pending new items (loot, crafting results) to inventory display.
   // Any that were claimed by ProcessRemoveFromStorageVault were already removed from this map.
@@ -4170,6 +4190,7 @@ async function pollPlayerLog() {
     const count = parsePlayerLogLines(lines);
     if (count > 0 && mainTab === 'favors') renderFavorsTab();
     if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
     if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
     if (mainTab === 'settings') renderSettingsTab();
   } catch(e) {
@@ -7526,11 +7547,13 @@ function renderToolsTab() {
       <div class="char-tab ${toolsSubTab==='safecracking'?'active':''}" onclick="setToolsSubTab('safecracking')">Safecracking</div>
       <div class="char-tab ${toolsSubTab==='survey'?'active':''}" onclick="setToolsSubTab('survey')">Survey</div>
       <div class="char-tab ${toolsSubTab==='gardening'?'active':''}" onclick="setToolsSubTab('gardening')">Gardening</div>
+      <div class="char-tab ${toolsSubTab==='dice'?'active':''}" onclick="setToolsSubTab('dice')">🎲 Dice</div>
     </div>
     <div id="toolsContent"></div>`;
   const content = document.getElementById('toolsContent');
   if (toolsSubTab === 'safecracking') renderSafecrackingTab(content);
   else if (toolsSubTab === 'gardening') renderGardeningTab(content);
+  else if (toolsSubTab === 'dice') renderDiceTab(content);
   else renderSurveyTab(content);
 }
 
@@ -8493,6 +8516,185 @@ function surveyRegionInput(purpose, field, value) {
     surveySend({ type: 'cmd_highlight_region', x: mc.x|0, y: mc.y|0, w: mc.w|0, h: mc.h|0 });
     surveySend({ type: 'cmd_update_config', map_capture: { [field]: value } });
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DICE GAME TAB
+// ═══════════════════════════════════════════════════════════
+
+function _diceContrib(face, redFaceSet) {
+  // If the rolled face value matches any initial red die → invert (subtract)
+  return redFaceSet.has(face) ? -face : face;
+}
+
+function _diceWinP(playerFinal, dealerCurrent) {
+  // Dealer rolls 2 more d6, both always positive. Win if playerFinal > dealerCurrent + sum.
+  let wins = 0;
+  for (let d1 = 1; d1 <= 6; d1++)
+    for (let d2 = 1; d2 <= 6; d2++)
+      if (playerFinal > dealerCurrent + d1 + d2) wins++;
+  return wins / 36;
+}
+
+function _diceCalcWinP(playerCurrent, dealerCurrent, redFaces, numNewDice, hubris) {
+  // numNewDice: 0, 1, or 2. hubris: 0 normal, 1 = Raise Bet (-1 to score).
+  const rfs = new Set(redFaces);
+  const penalty = hubris ? 1 : 0;
+
+  if (numNewDice === 0) {
+    return _diceWinP(playerCurrent - penalty, dealerCurrent);
+  }
+  let total = 0, count = 0;
+  for (let f1 = 1; f1 <= 6; f1++) {
+    if (numNewDice === 1) {
+      total += _diceWinP(playerCurrent + _diceContrib(f1, rfs) - penalty, dealerCurrent);
+      count++;
+    } else {
+      for (let f2 = 1; f2 <= 6; f2++) {
+        total += _diceWinP(playerCurrent + _diceContrib(f1, rfs) + _diceContrib(f2, rfs) - penalty, dealerCurrent);
+        count++;
+      }
+    }
+  }
+  return total / count;
+}
+
+function renderDiceTab(targetEl) {
+  const el = targetEl || document.getElementById('appContent');
+  if (!el) return;
+
+  const clearBtn = `<button onclick="diceGameState=null;renderToolsTab()"
+    style="font-size:11px;padding:3px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);border-radius:4px;cursor:pointer">
+    Clear</button>`;
+
+  if (!diceGameState) {
+    el.innerHTML = `<div style="padding:32px 24px;text-align:center;color:var(--text-dim)">
+      <div style="font-size:40px;margin-bottom:14px">🎲</div>
+      <div style="font-size:14px;margin-bottom:8px">No active dice game detected.</div>
+      <div style="font-size:12px">Open a Dice game with an NPC and the game state will be parsed automatically from the player log.</div>
+    </div>`;
+    return;
+  }
+
+  const { playerScore, dealerScore, redFaces, ts } = diceGameState;
+  const isAhead = playerScore > dealerScore;
+  const DICE_FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+  // Options: [label, numNewDice, hubris, onlyIfAhead]
+  const OPTIONS = [
+    ['Pass',           0, 0, true ],
+    ['Roll 1 die',     1, 0, false],
+    ['Roll 2 dice',    2, 0, false],
+    ['Raise + Pass',   0, 1, true ],
+    ['Raise + Roll 1', 1, 1, false],
+    ['Raise + Roll 2', 2, 1, false],
+  ];
+
+  const computed = OPTIONS.map(([label, nd, hub, onlyAhead]) => {
+    const available = !onlyAhead || isAhead;
+    const winP = available ? _diceCalcWinP(playerScore, dealerScore, redFaces, nd, hub) : null;
+    // EV: normal = win 2000 / lose -1000; raise = win 6000 / lose -2000
+    const ev = winP !== null
+      ? (hub ? (winP * 6000 - (1 - winP) * 2000) : (winP * 2000 - (1 - winP) * 1000))
+      : null;
+    return { label, nd, hub, available, winP, ev };
+  });
+
+  const maxEv = Math.max(...computed.filter(o => o.ev !== null).map(o => o.ev));
+
+  // Header: dice faces
+  const facesHtml = redFaces.length
+    ? redFaces.map(f => `<span style="font-size:26px;line-height:1">${DICE_FACE[f] || f}</span>`).join('&thinsp;')
+    : '<span style="color:var(--text-dim);font-size:13px">—</span>';
+
+  const aheadHtml = playerScore > dealerScore
+    ? `<span style="color:#50d060">Ahead +${playerScore - dealerScore}</span>`
+    : playerScore < dealerScore
+      ? `<span style="color:#d05050">Behind −${dealerScore - playerScore}</span>`
+      : `<span style="color:var(--gold-dim)">Tied</span>`;
+
+  const secsAgo = Math.round((Date.now() - ts) / 1000);
+  const ageHtml = secsAgo < 60 ? `${secsAgo}s ago` : `${Math.round(secsAgo/60)}m ago`;
+
+  // Table rows
+  let prevHub = null;
+  const rowsHtml = computed.map(opt => {
+    const sep = (prevHub !== null && opt.hub !== prevHub)
+      ? `<tr><td colspan="3" style="padding:4px 10px;border-top:1px solid var(--border)"></td></tr>` : '';
+    prevHub = opt.hub;
+
+    if (!opt.available) {
+      return sep + `<tr style="opacity:.3">
+        <td style="padding:5px 10px">${opt.label}</td>
+        <td style="padding:5px 10px;text-align:center;color:var(--text-dim)">—</td>
+        <td style="padding:5px 10px;text-align:center;color:var(--text-dim)">n/a</td>
+      </tr>`;
+    }
+
+    const pct = (opt.winP * 100).toFixed(1) + '%';
+    const pctColor = opt.winP >= 0.6 ? '#50d060' : opt.winP >= 0.45 ? 'var(--text)' : '#d06050';
+    const isBest = Math.abs(opt.ev - maxEv) < 0.01;
+    const evNum = Math.round(opt.ev);
+    const evStr = (evNum >= 0 ? '+' : '') + evNum.toLocaleString() + ' 🪙';
+    const evColor = opt.ev >= 0 ? 'var(--gold)' : '#c04040';
+    const rowBg = isBest ? 'background:rgba(80,210,80,.07)' : '';
+    const boldW = isBest ? '600' : '400';
+
+    return sep + `<tr style="${rowBg}">
+      <td style="padding:5px 10px;font-weight:${boldW}">${isBest ? '✓ ' : ''}${opt.label}</td>
+      <td style="padding:5px 10px;text-align:center;color:${pctColor}">${pct}</td>
+      <td style="padding:5px 10px;text-align:center;color:${evColor}">${evStr}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+  <div style="padding:16px 20px">
+
+    <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:16px;
+                padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">
+      <div>
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Your dice</div>
+        <div style="line-height:1">${facesHtml}</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:5px">
+          Values ${redFaces.join(', ')} invert on re-roll
+        </div>
+      </div>
+      <div style="text-align:center;min-width:64px">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Your score</div>
+        <div style="font-size:28px;font-weight:700;color:var(--gold);line-height:1">${playerScore}</div>
+      </div>
+      <div style="text-align:center;min-width:64px">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Dealer</div>
+        <div style="font-size:28px;font-weight:700;color:#d4b84a;line-height:1">${dealerScore}</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px">+2d6 min</div>
+      </div>
+      <div style="text-align:center;min-width:80px">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Status</div>
+        <div style="font-size:14px;font-weight:600">${aheadHtml}</div>
+      </div>
+      <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <div style="font-size:10px;color:var(--text-dim)">${ageHtml}</div>
+        ${clearBtn}
+      </div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="padding:5px 10px;text-align:left;font-size:11px;color:var(--text-dim);font-weight:500">Option</th>
+          <th style="padding:5px 10px;text-align:center;font-size:11px;color:var(--text-dim);font-weight:500">Win %</th>
+          <th style="padding:5px 10px;text-align:center;font-size:11px;color:var(--text-dim);font-weight:500">EV (coins)</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+
+    <div style="font-size:10px;color:var(--text-dim);margin-top:12px;line-height:1.6">
+      Win%: probability player final score beats dealer final score (dealer always adds 2d6).<br>
+      EV assumes normal win +2 000 / lose −1 000; Raise win +6 000 / lose −2 000 coins.<br>
+      Re-rolled dice showing a value from your original throw are subtracted instead of added.
+    </div>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════════
