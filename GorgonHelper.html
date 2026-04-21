@@ -510,6 +510,8 @@ let diceGameState = null; // { playerScore, dealerScore, redFaces: number[], ts:
 let diceRefreshTimer = null; // ticks the result screen counter + auto-clears stale results
 let _diceLastRaw = null;    // last raw "Dice Game" log line received (for debug display)
 let _diceParseNote = '';    // why the last line did/didn't parse
+let diceSession = null;     // { wins:0, losses:0, startedAt:number } | null
+let diceSessionRaise = false; // false=normal bets, true=raise bets (affects gold calc)
 
 // Gardening tab state
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
@@ -3650,6 +3652,11 @@ async function loadPlayerLogData() {
     const marked = localStorage.getItem('pgSellGiftMarked');
     if (marked) sellGiftMarked = new Set(JSON.parse(marked));
   } catch(e) {}
+  try {
+    const ds = localStorage.getItem('pgDiceSession');
+    if (ds) diceSession = JSON.parse(ds);
+    diceSessionRaise = localStorage.getItem('pgDiceSessionRaise') === '1';
+  } catch(e) {}
 }
 
 function savePlayerLogData() {
@@ -3657,6 +3664,11 @@ function savePlayerLogData() {
   try { localStorage.setItem('pgPlayerLogData', JSON.stringify(payload)); } catch(e) {}
   try { localStorage.setItem('pgGardenData', JSON.stringify(gardenData)); } catch(e) {}
   try { localStorage.setItem('pgPlayerLogPos', String(playerLogFileSize)); } catch(e) {}
+  try {
+    if (diceSession) localStorage.setItem('pgDiceSession', JSON.stringify(diceSession));
+    else localStorage.removeItem('pgDiceSession');
+    localStorage.setItem('pgDiceSessionRaise', diceSessionRaise ? '1' : '0');
+  } catch(e) {}
   // Also persist to IndexedDB as a backup against localStorage being cleared
   if (db) dbPut('player_log_data', 'main', payload).catch(() => {});
 }
@@ -4114,14 +4126,18 @@ function parsePlayerLogLines(lines) {
         const psM = line.match(/Your score:\s*(\d+)/);
         const dsM = line.match(/Dealer score:\s*(\d+)/);
         if (psM && dsM) {
-          _diceParseNote = `result: player=${psM[1]} dealer=${dsM[1]}`;
+          const isWin = /YOU WIN/.test(line);
+          _diceParseNote = `result: player=${psM[1]} dealer=${dsM[1]} outcome=${isWin?'win':'lose'}`;
           diceGameState = {
             ...(diceGameState || {}),
             finalPlayerScore: +psM[1],
             finalDealerScore: +dsM[1],
-            outcome: /YOU WIN/.test(line) ? 'win' : 'lose',
+            outcome: isWin ? 'win' : 'lose',
             ts: Date.now(),
           };
+          // ── Session tracking ──────────────────────────────────────────────
+          if (!diceSession) diceSession = { wins: 0, losses: 0, startedAt: Date.now() };
+          if (isWin) diceSession.wins++; else diceSession.losses++;
           vendorCount++;
           if (mainTab === 'tools' && toolsSubTab === 'dice') {
             const tc = document.getElementById('toolsContent');
@@ -8639,6 +8655,52 @@ function _diceCalcWinP(playerCurrent, dealerCurrent, redFaces, numNewDice, hubri
   return total / count;
 }
 
+function diceResetSession() {
+  diceSession = { wins: 0, losses: 0, startedAt: Date.now() };
+  try { localStorage.setItem('pgDiceSession', JSON.stringify(diceSession)); } catch(e) {}
+}
+
+function _diceSessionBarHtml() {
+  if (!diceSession) {
+    return `<div style="padding:7px 16px;background:var(--bg3);border:1px solid var(--border);
+                        border-radius:6px;margin-bottom:14px;display:flex;align-items:center;
+                        gap:12px;font-size:12px;color:var(--text-dim)">
+      <span style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">Session</span>
+      <span style="opacity:.6">No results tracked yet — plays this session will appear here automatically.</span>
+    </div>`;
+  }
+  const { wins, losses, startedAt } = diceSession;
+  const winAmt  = diceSessionRaise ? 6000 : 2000;
+  const lossAmt = diceSessionRaise ? 2000 : 1000;
+  const goldNet = wins * winAmt - losses * lossAmt;
+  const goldColor = goldNet >= 0 ? 'var(--gold)' : '#d05050';
+  const goldStr  = (goldNet >= 0 ? '+' : '') + goldNet.toLocaleString() + 'g';
+  const total    = wins + losses;
+  const pctStr   = total > 0 ? ` (${Math.round(wins/total*100)}%)` : '';
+  const elapsed  = Math.round((Date.now() - startedAt) / 1000);
+  const elHours  = Math.floor(elapsed / 3600);
+  const elMins   = Math.floor((elapsed % 3600) / 60);
+  const elStr    = elHours > 0 ? `${elHours}h ${elMins}m` : `${elMins}m`;
+  const btnStyle = `font-size:10px;padding:2px 7px;background:var(--bg2);border:1px solid var(--border);
+                    color:var(--text-dim);border-radius:3px;cursor:pointer;`;
+  const raiseLabel = diceSessionRaise ? 'Raise bets' : 'Normal bets';
+  return `<div style="padding:7px 14px;background:var(--bg3);border:1px solid var(--border);
+                      border-radius:6px;margin-bottom:14px;display:flex;align-items:center;
+                      gap:14px;font-size:12px;flex-wrap:wrap">
+    <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Session</span>
+    <span><span style="color:#50d060;font-weight:600">W: ${wins}</span></span>
+    <span><span style="color:#d05050;font-weight:600">L: ${losses}</span>${pctStr}</span>
+    <span style="color:${goldColor};font-weight:600">${goldStr}</span>
+    <span style="color:var(--text-dim);font-size:11px">${elStr}</span>
+    <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <button onclick="diceSessionRaise=!diceSessionRaise;savePlayerLogData();renderToolsTab()"
+        style="${btnStyle}color:var(--text)">${raiseLabel}</button>
+      <button onclick="diceResetSession();renderToolsTab()"
+        style="${btnStyle}">Reset</button>
+    </span>
+  </div>`;
+}
+
 function renderDiceTab(targetEl) {
   const el = targetEl || document.getElementById('appContent');
   if (!el) return;
@@ -8661,11 +8723,15 @@ function renderDiceTab(targetEl) {
            <div style="font-size:10px;color:var(--text-dim)">Parse result: <span style="color:var(--text)">${_diceParseNote}</span></div>
          </div>`
       : `<div style="font-size:12px;margin-top:6px;color:var(--text-dim)">No "Dice Game" log line received yet.</div>`;
-    el.innerHTML = `<div style="padding:32px 24px;text-align:center;color:var(--text-dim)">
-      <div style="font-size:14px;margin-bottom:8px">No active dice game detected.</div>
-      <div style="font-size:12px">Open a Dice game with an NPC — the state is parsed automatically from the player log.</div>
-      <div style="font-size:11px;margin-top:8px">${watcherHtml}</div>
-      ${dbgHtml}
+    el.innerHTML = `<div style="padding:16px 20px">
+      ${_diceSessionBarHtml()}
+      <div style="padding:24px;text-align:center;color:var(--text-dim);background:var(--bg3);
+                  border:1px solid var(--border);border-radius:8px">
+        <div style="font-size:14px;margin-bottom:8px">No active dice game detected.</div>
+        <div style="font-size:12px">Open a Dice game with an NPC — the state is parsed automatically from the player log.</div>
+        <div style="font-size:11px;margin-top:8px">${watcherHtml}</div>
+        ${dbgHtml}
+      </div>
     </div>`;
     return;
   }
@@ -8679,7 +8745,8 @@ function renderDiceTab(targetEl) {
     const secsAgo = Math.round((Date.now() - ts) / 1000);
     const ageHtml = secsAgo < 60 ? `${secsAgo}s ago` : `${Math.round(secsAgo/60)}m ago`;
     el.innerHTML = `
-    <div style="padding:24px 20px">
+    <div style="padding:16px 20px">
+      ${_diceSessionBarHtml()}
       <div style="text-align:center;padding:20px 16px;background:var(--bg3);border:1px solid ${color};border-radius:8px;margin-bottom:16px">
         <div style="font-size:32px;font-weight:700;color:${color};margin-bottom:8px">${win ? 'YOU WIN' : 'YOU LOSE'}</div>
         <div style="display:flex;justify-content:center;gap:32px;margin-top:12px">
@@ -8773,6 +8840,8 @@ function renderDiceTab(targetEl) {
 
   el.innerHTML = `
   <div style="padding:16px 20px">
+
+    ${_diceSessionBarHtml()}
 
     <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:16px;
                 padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">
