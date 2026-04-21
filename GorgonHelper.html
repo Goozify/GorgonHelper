@@ -4102,30 +4102,47 @@ function parsePlayerLogLines(lines) {
     }
 
     // ── Dice Game ─────────────────────────────────────────────────────────────
-    // ProcessTalkScreen(-346, "Dice Game", "Your score from red dice is <color=red><sprite index=N>...</color>... = <color=red>TOTAL</color>\n\nDealer's score is <color=yellow>DEALER</color>...")
-    // Each die may be wrapped in its own <color=red>...</color> span so we cannot rely on
-    // capturing a single block — instead we slice from "Your score" to the total marker
-    // and extract ALL index=N occurrences in that range.
     if (line.includes('"Dice Game"')) {
-      const diceStart  = line.indexOf('Your score from red dice is');
-      const playerTotM = line.match(/=\s*<color=red>(\d+)<\/color>/);
-      const dealerScM  = line.match(/Dealer.s score is <color=yellow>(\d+)<\/color>/);
-      if (diceStart >= 0 && playerTotM && dealerScM) {
-        const totIdx     = line.indexOf(playerTotM[0], diceStart);
-        const diceSection = totIdx > diceStart ? line.slice(diceStart, totIdx) : line.slice(diceStart);
-        const faces = [...diceSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
-        if (faces.length > 0) {
-          diceGameState = {
-            playerScore: +playerTotM[1],
-            dealerScore: +dealerScM[1],
-            redFaces: faces,
-            ts: Date.now(),
-          };
-          vendorCount++;
-          // Re-render immediately if the Dice tab is already open
-          if (mainTab === 'tools' && toolsSubTab === 'dice') {
-            const tc = document.getElementById('toolsContent');
-            if (tc) renderDiceTab(tc);
+      // ── Result screen: "Your score: N\nDealer score: N\n\nYOU WIN/LOSE" ──
+      // \n appears as the literal two-char sequence \n in the log line.
+      const resM = line.match(/Your score:\s*(\d+)\\nDealer score:\s*(\d+)\\n\\n(YOU WIN|YOU LOSE)/);
+      if (resM) {
+        diceGameState = {
+          ...(diceGameState || {}),
+          finalPlayerScore: +resM[1],
+          finalDealerScore: +resM[2],
+          outcome: resM[3] === 'YOU WIN' ? 'win' : 'lose',
+          ts: Date.now(),
+        };
+        vendorCount++;
+        if (mainTab === 'tools' && toolsSubTab === 'dice') {
+          const tc = document.getElementById('toolsContent');
+          if (tc) renderDiceTab(tc);
+        }
+      }
+      // ── Initial game screen: "Your score from red dice is ... = <color=red>TOTAL" ──
+      // Each die may be in its own <color=red>...</color> span, so slice the line from
+      // "Your score from red dice is" to "= <color=red>TOTAL" and scan all index=N values.
+      else {
+        const diceStart  = line.indexOf('Your score from red dice is');
+        const playerTotM = line.match(/=\s*<color=red>(\d+)<\/color>/);
+        const dealerScM  = line.match(/Dealer.s score is <color=yellow>(\d+)<\/color>/);
+        if (diceStart >= 0 && playerTotM && dealerScM) {
+          const totIdx      = line.indexOf(playerTotM[0], diceStart);
+          const diceSection = totIdx > diceStart ? line.slice(diceStart, totIdx) : line.slice(diceStart);
+          const faces = [...diceSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
+          if (faces.length > 0) {
+            diceGameState = {
+              playerScore: +playerTotM[1],
+              dealerScore: +dealerScM[1],
+              redFaces: faces,
+              ts: Date.now(),
+            };
+            vendorCount++;
+            if (mainTab === 'tools' && toolsSubTab === 'dice') {
+              const tc = document.getElementById('toolsContent');
+              if (tc) renderDiceTab(tc);
+            }
           }
         }
       }
@@ -8588,7 +8605,37 @@ function renderDiceTab(targetEl) {
     return;
   }
 
-  const { playerScore, dealerScore, redFaces, ts } = diceGameState;
+  const { playerScore, dealerScore, redFaces, ts, outcome, finalPlayerScore, finalDealerScore } = diceGameState;
+
+  // ── Result screen ─────────────────────────────────────────
+  if (outcome) {
+    const win = outcome === 'win';
+    const color = win ? '#50d060' : '#d05050';
+    const secsAgo = Math.round((Date.now() - ts) / 1000);
+    const ageHtml = secsAgo < 60 ? `${secsAgo}s ago` : `${Math.round(secsAgo/60)}m ago`;
+    el.innerHTML = `
+    <div style="padding:24px 20px">
+      <div style="text-align:center;padding:20px 16px;background:var(--bg3);border:1px solid ${color};border-radius:8px;margin-bottom:16px">
+        <div style="font-size:32px;font-weight:700;color:${color};margin-bottom:8px">${win ? 'YOU WIN' : 'YOU LOSE'}</div>
+        <div style="display:flex;justify-content:center;gap:32px;margin-top:12px">
+          <div style="text-align:center">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Your final score</div>
+            <div style="font-size:24px;font-weight:700;color:var(--gold)">${finalPlayerScore}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Dealer final score</div>
+            <div style="font-size:24px;font-weight:700;color:#d4b84a">${finalDealerScore}</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:11px;color:var(--text-dim)">Detected ${ageHtml} — waiting for next game…</div>
+        ${clearBtn}
+      </div>
+    </div>`;
+    return;
+  }
+
   const isAhead = playerScore > dealerScore;
   const DICE_FACE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
