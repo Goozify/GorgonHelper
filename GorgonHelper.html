@@ -8783,29 +8783,30 @@ function _diceUpdateOverlay() {
     const evNum = Math.round(best.ev);
     const evStr = (evNum >= 0 ? '+' : '') + evNum.toLocaleString() + 'g';
 
-    // Visual die icon: SVG square with 4 corner dots, colour-coded by bet type.
-    // Normal = blue-purple, Raise = gold — same distinction as the two rows in the table.
-    const die = (col) => `<svg width="26" height="26" viewBox="0 0 26 26"
+    // Die icon: SVG square with 4 corner dots.
+    // Colour encodes how many dice to roll: 1 die = blue, 2 dice = green.
+    // (Raise vs normal is already clear from the text label.)
+    const die = (col) => `<svg width="20" height="20" viewBox="0 0 22 22"
         style="vertical-align:middle;margin:0 2px;flex-shrink:0">
-      <rect x="1.5" y="1.5" width="23" height="23" rx="4.5"
+      <rect x="1.5" y="1.5" width="19" height="19" rx="4"
             fill="${col}" stroke="rgba(0,0,0,.55)" stroke-width="1.5"/>
-      <circle cx="7.5"  cy="7.5"  r="2.4" fill="rgba(0,0,0,.45)"/>
-      <circle cx="18.5" cy="7.5"  r="2.4" fill="rgba(0,0,0,.45)"/>
-      <circle cx="7.5"  cy="18.5" r="2.4" fill="rgba(0,0,0,.45)"/>
-      <circle cx="18.5" cy="18.5" r="2.4" fill="rgba(0,0,0,.45)"/>
+      <circle cx="6.5"  cy="6.5"  r="2" fill="rgba(0,0,0,.45)"/>
+      <circle cx="15.5" cy="6.5"  r="2" fill="rgba(0,0,0,.45)"/>
+      <circle cx="6.5"  cy="15.5" r="2" fill="rgba(0,0,0,.45)"/>
+      <circle cx="15.5" cy="15.5" r="2" fill="rgba(0,0,0,.45)"/>
     </svg>`;
-    const ND = die('#8899ee'); // normal die  – blue-purple
-    const RD = die('#e8a838'); // raise die   – gold
+    const D1 = die('#88aaff'); // 1-die colour  – blue
+    const D2 = die('#50c878'); // 2-dice colour – green
 
+    const lbl = `<span style="font-size:14px;font-weight:600;color:${C.text}">${best.label}</span>`;
     const actionHtml = {
-      'Pass':           `<span style="font-size:15px;font-weight:600;color:${C.text}">Pass</span>`,
-      'Roll 1 die':     ND,
-      'Roll 2 dice':    ND + ND,
-      'Raise + Pass':   `<span style="font-size:11px;color:${C.gold};margin-right:3px">Raise</span>`
-                      + `<span style="font-size:15px;font-weight:600;color:${C.text}">Pass</span>`,
-      'Raise + Roll 1': RD,
-      'Raise + Roll 2': RD + RD,
-    }[best.label] ?? `<span style="color:${C.text}">${best.label}</span>`;
+      'Pass':           lbl,
+      'Roll 1 die':     lbl + D1,
+      'Roll 2 dice':    lbl + D2 + D2,
+      'Raise + Pass':   lbl,
+      'Raise + Roll 1': lbl + D1,
+      'Raise + Roll 2': lbl + D2 + D2,
+    }[best.label] ?? lbl;
 
     body = `
       <div style="padding:7px 12px;border-bottom:1px solid ${C.border};
