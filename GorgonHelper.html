@@ -8783,6 +8783,30 @@ function _diceUpdateOverlay() {
     const evNum = Math.round(best.ev);
     const evStr = (evNum >= 0 ? '+' : '') + evNum.toLocaleString() + 'g';
 
+    // Visual die icon: SVG square with 4 corner dots, colour-coded by bet type.
+    // Normal = blue-purple, Raise = gold — same distinction as the two rows in the table.
+    const die = (col) => `<svg width="26" height="26" viewBox="0 0 26 26"
+        style="vertical-align:middle;margin:0 2px;flex-shrink:0">
+      <rect x="1.5" y="1.5" width="23" height="23" rx="4.5"
+            fill="${col}" stroke="rgba(0,0,0,.55)" stroke-width="1.5"/>
+      <circle cx="7.5"  cy="7.5"  r="2.4" fill="rgba(0,0,0,.45)"/>
+      <circle cx="18.5" cy="7.5"  r="2.4" fill="rgba(0,0,0,.45)"/>
+      <circle cx="7.5"  cy="18.5" r="2.4" fill="rgba(0,0,0,.45)"/>
+      <circle cx="18.5" cy="18.5" r="2.4" fill="rgba(0,0,0,.45)"/>
+    </svg>`;
+    const ND = die('#8899ee'); // normal die  – blue-purple
+    const RD = die('#e8a838'); // raise die   – gold
+
+    const actionHtml = {
+      'Pass':           `<span style="font-size:15px;font-weight:600;color:${C.text}">Pass</span>`,
+      'Roll 1 die':     ND,
+      'Roll 2 dice':    ND + ND,
+      'Raise + Pass':   `<span style="font-size:11px;color:${C.gold};margin-right:3px">Raise</span>`
+                      + `<span style="font-size:15px;font-weight:600;color:${C.text}">Pass</span>`,
+      'Raise + Roll 1': RD,
+      'Raise + Roll 2': RD + RD,
+    }[best.label] ?? `<span style="color:${C.text}">${best.label}</span>`;
+
     body = `
       <div style="padding:7px 12px;border-bottom:1px solid ${C.border};
                   display:flex;align-items:center;gap:14px;font-size:13px">
@@ -8790,10 +8814,10 @@ function _diceUpdateOverlay() {
         <span>Dealer: <strong style="color:${C.dealer}">${dealerScore}</strong></span>
         <span style="margin-left:auto;font-size:11px;color:${statusCol}">${statusStr}</span>
       </div>
-      <div style="padding:9px 12px;display:flex;align-items:center;gap:9px">
-        <span style="font-size:16px;color:${C.green};font-weight:700;line-height:1">→</span>
-        <span style="font-size:15px;color:${C.text};font-weight:600">${best.label}</span>
-        <span style="font-size:12px;color:${statusCol}">${(best.winP*100).toFixed(1)}%</span>
+      <div style="padding:7px 12px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px;color:${C.green};font-weight:700;line-height:1;flex-shrink:0">→</span>
+        <span style="display:flex;align-items:center;gap:0">${actionHtml}</span>
+        <span style="font-size:12px;color:${statusCol};margin-left:4px">${(best.winP*100).toFixed(1)}%</span>
         <span style="font-size:12px;color:${best.ev>=0?C.gold:C.red};margin-left:auto">${evStr} EV</span>
       </div>`;
   }
