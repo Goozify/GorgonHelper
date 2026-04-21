@@ -4104,9 +4104,11 @@ function parsePlayerLogLines(lines) {
 
     // ── Dice Game ─────────────────────────────────────────────────────────────
     if (line.includes('"Dice Game"')) {
-      // ── Result screen: uniquely identified by YOU WIN / YOU LOSE being present ──
-      // (The result screen also has "Your score: N" and "Dealer score: N" as plain text.)
+      // Result screen is uniquely identified by YOU WIN / YOU LOSE.
+      // Everything else that has dice sprites is treated as an initial game screen.
+      // Initial check comes first and always resets the board.
       if (/YOU WIN|YOU LOSE/.test(line)) {
+        // ── Result screen ──
         const psM = line.match(/Your score:\s*(\d+)/);
         const dsM = line.match(/Dealer score:\s*(\d+)/);
         if (psM && dsM) {
@@ -4121,33 +4123,39 @@ function parsePlayerLogLines(lines) {
           if (mainTab === 'tools' && toolsSubTab === 'dice') {
             const tc = document.getElementById('toolsContent');
             if (tc) renderDiceTab(tc);
-            _diceStartResultTimer(); // keep result age counter ticking
+            _diceStartResultTimer();
           }
         }
-      }
-      // ── Initial game screen: "Your score from red dice is …" ──
-      // Colour tags may be named (red/yellow) or hex (#RRGGBB) — use [^>]+ to match either.
-      // Each die may live in its own <color=…> span so we slice from "Your score from red
-      // dice is" up to the "= <color=…>TOTAL" marker and scan all index=N in that region.
-      else if (line.includes('Your score from red dice is')) {
-        const diceStart  = line.indexOf('Your score from red dice is');
-        // Take the LAST "= <color=…>N</color>" in the line — that is the running total.
-        const allTotals  = [...line.matchAll(/=\s*<color=[^>]+>(\d+)<\/color>/g)];
-        const playerTotM = allTotals.length ? allTotals[allTotals.length - 1] : null;
-        const dealerScM  = line.match(/Dealer.s score is <color=[^>]+>(\d+)<\/color>/);
-        if (playerTotM && dealerScM) {
-          const totIdx      = line.indexOf(playerTotM[0], diceStart);
-          const diceSection = totIdx > diceStart ? line.slice(diceStart, totIdx) : line.slice(diceStart);
-          const faces = [...diceSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
-          if (faces.length > 0) {
+      } else {
+        // ── Initial game screen ──
+        // Extract all dice sprite indices from the line.
+        const allIndices = [...line.matchAll(/index=(\d+)/g)].map(x => +x[1]);
+        if (allIndices.length > 0) {
+          // Player score: sum of dice faces as reliable base; override with the last
+          // colour-tagged number after '=' if present (the running total).
+          let playerScore = allIndices.reduce((s, f) => s + f, 0);
+          const totals = [...line.matchAll(/=\s*(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/g)];
+          if (totals.length) {
+            const last = +totals[totals.length - 1][1];
+            if (last > 0) playerScore = last;
+          }
+
+          // Dealer score: try multiple patterns (named colour, hex colour, plain text).
+          let dealerScore = null;
+          const dm = line.match(/Dealer.{0,15}score.{0,10}?(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/i)
+                  || line.match(/Dealer.{0,5}:\s*(\d+)/i);
+          if (dm) dealerScore = +dm[1];
+
+          if (dealerScore !== null) {
             diceGameState = {
-              playerScore: +playerTotM[1],
-              dealerScore: +dealerScM[1],
-              redFaces: faces,
+              playerScore,
+              dealerScore,
+              redFaces: allIndices,
               ts: Date.now(),
             };
             vendorCount++;
             if (mainTab === 'tools' && toolsSubTab === 'dice') {
+              if (diceRefreshTimer) { clearInterval(diceRefreshTimer); diceRefreshTimer = null; }
               const tc = document.getElementById('toolsContent');
               if (tc) renderDiceTab(tc);
             }
