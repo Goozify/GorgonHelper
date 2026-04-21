@@ -508,6 +508,8 @@ let storageSortDir = 'asc';
 let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening' | 'dice'
 let diceGameState = null; // { playerScore, dealerScore, redFaces: number[], ts: number } | null
 let diceRefreshTimer = null; // ticks the result screen counter + auto-clears stale results
+let _diceLastRaw = null;    // last raw "Dice Game" log line received (for debug display)
+let _diceParseNote = '';    // why the last line did/didn't parse
 
 // Gardening tab state
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
@@ -4104,14 +4106,15 @@ function parsePlayerLogLines(lines) {
 
     // ── Dice Game ─────────────────────────────────────────────────────────────
     if (line.includes('"Dice Game"')) {
+      _diceLastRaw = line; // always capture for debug display
       // Result screen is uniquely identified by YOU WIN / YOU LOSE.
       // Everything else that has dice sprites is treated as an initial game screen.
-      // Initial check comes first and always resets the board.
       if (/YOU WIN|YOU LOSE/.test(line)) {
         // ── Result screen ──
         const psM = line.match(/Your score:\s*(\d+)/);
         const dsM = line.match(/Dealer score:\s*(\d+)/);
         if (psM && dsM) {
+          _diceParseNote = `result: player=${psM[1]} dealer=${dsM[1]}`;
           diceGameState = {
             ...(diceGameState || {}),
             finalPlayerScore: +psM[1],
@@ -4125,10 +4128,11 @@ function parsePlayerLogLines(lines) {
             if (tc) renderDiceTab(tc);
             _diceStartResultTimer();
           }
+        } else {
+          _diceParseNote = `result screen but missing scores (psM=${!!psM} dsM=${!!dsM})`;
         }
       } else {
         // ── Initial game screen ──
-        // Extract all dice sprite indices from the line.
         const allIndices = [...line.matchAll(/index=(\d+)/g)].map(x => +x[1]);
         if (allIndices.length > 0) {
           // Player score: sum of dice faces as reliable base; override with the last
@@ -4143,8 +4147,11 @@ function parsePlayerLogLines(lines) {
           // Dealer score: try multiple patterns (named colour, hex colour, plain text).
           let dealerScore = null;
           const dm = line.match(/Dealer.{0,15}score.{0,10}?(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/i)
-                  || line.match(/Dealer.{0,5}:\s*(\d+)/i);
+                  || line.match(/Dealer.{0,5}:\s*(\d+)/i)
+                  || line.match(/Dealer.{0,30}?(\d+)/i);
           if (dm) dealerScore = +dm[1];
+
+          _diceParseNote = `initial: indices=[${allIndices}] dealer=${dealerScore} player=${playerScore}`;
 
           if (dealerScore !== null) {
             diceGameState = {
@@ -8636,10 +8643,17 @@ function renderDiceTab(targetEl) {
     Clear</button>`;
 
   if (!diceGameState) {
+    const dbgHtml = _diceLastRaw
+      ? `<div style="margin-top:16px;text-align:left;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;max-width:600px;margin-left:auto;margin-right:auto">
+           <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Last "Dice Game" line received</div>
+           <div style="font-size:10px;color:var(--gold-dim);word-break:break-all;margin-bottom:6px">${_diceLastRaw.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').slice(0, 400)}</div>
+           <div style="font-size:10px;color:var(--text-dim)">Parse result: <span style="color:var(--text)">${_diceParseNote}</span></div>
+         </div>`
+      : `<div style="font-size:12px;margin-top:6px;color:var(--text-dim)">No "Dice Game" log line received yet.</div>`;
     el.innerHTML = `<div style="padding:32px 24px;text-align:center;color:var(--text-dim)">
-      <div style="font-size:40px;margin-bottom:14px">🎲</div>
       <div style="font-size:14px;margin-bottom:8px">No active dice game detected.</div>
-      <div style="font-size:12px">Open a Dice game with an NPC and the game state will be parsed automatically from the player log.</div>
+      <div style="font-size:12px">Open a Dice game with an NPC — the state is parsed automatically from the player log.</div>
+      ${dbgHtml}
     </div>`;
     return;
   }
