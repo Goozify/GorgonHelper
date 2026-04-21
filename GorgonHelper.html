@@ -4133,18 +4133,23 @@ function parsePlayerLogLines(lines) {
         }
       } else {
         // ── Initial game screen ──
-        const allIndices = [...line.matchAll(/index=(\d+)/g)].map(x => +x[1]);
+        // The line contains both player and dealer dice sprites.  We must
+        // restrict extraction to the player section (before "Dealer" text)
+        // to avoid counting dealer dice as the player's initial red faces.
+        const dealerIdx = line.search(/Dealer/i);
+        const playerSection = dealerIdx > 0 ? line.slice(0, dealerIdx) : line;
+        const allIndices = [...playerSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
         if (allIndices.length > 0) {
-          // Player score: sum of dice faces as reliable base; override with the last
-          // colour-tagged number after '=' if present (the running total).
+          // Player score: sum of dice faces as reliable base; override with the
+          // colour-tagged total after '=' in the player section if present.
           let playerScore = allIndices.reduce((s, f) => s + f, 0);
-          const totals = [...line.matchAll(/=\s*(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/g)];
+          const totals = [...playerSection.matchAll(/=\s*(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/g)];
           if (totals.length) {
             const last = +totals[totals.length - 1][1];
             if (last > 0) playerScore = last;
           }
 
-          // Dealer score: try multiple patterns (named colour, hex colour, plain text).
+          // Dealer score: try multiple patterns against the full line.
           let dealerScore = null;
           const dm = line.match(/Dealer.{0,15}score.{0,10}?(?:<color=[^>]+>)?(\d+)(?:<\/color>)?/i)
                   || line.match(/Dealer.{0,5}:\s*(\d+)/i)
@@ -8643,6 +8648,12 @@ function renderDiceTab(targetEl) {
     Clear</button>`;
 
   if (!diceGameState) {
+    const watcherOk = playerLogWatchActive && !!playerLogFileHandle;
+    const watcherHtml = watcherOk
+      ? `<span style="color:#7ab880">● Log watcher active</span>`
+      : playerLogPendingHandle
+        ? `<span style="color:#e8a838">⚠ Log watcher needs permission — go to Settings and click Resume</span>`
+        : `<span style="color:#c06060">✗ Log watcher not running — open Settings and select your Player.log file</span>`;
     const dbgHtml = _diceLastRaw
       ? `<div style="margin-top:16px;text-align:left;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;max-width:600px;margin-left:auto;margin-right:auto">
            <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Last "Dice Game" line received</div>
@@ -8653,6 +8664,7 @@ function renderDiceTab(targetEl) {
     el.innerHTML = `<div style="padding:32px 24px;text-align:center;color:var(--text-dim)">
       <div style="font-size:14px;margin-bottom:8px">No active dice game detected.</div>
       <div style="font-size:12px">Open a Dice game with an NPC — the state is parsed automatically from the player log.</div>
+      <div style="font-size:11px;margin-top:8px">${watcherHtml}</div>
       ${dbgHtml}
     </div>`;
     return;
