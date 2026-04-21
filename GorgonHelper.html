@@ -512,6 +512,7 @@ let _diceLastRaw = null;    // last raw "Dice Game" log line received (for debug
 let _diceParseNote = '';    // why the last line did/didn't parse
 let diceSession = null;     // { wins:0, losses:0, startedAt:number } | null
 let diceSessionRaise = false; // false=normal bets, true=raise bets (affects gold calc)
+let dicePipWindow = null;   // Document Picture-in-Picture overlay window
 
 // Gardening tab state
 let gardenData = {}; // charName → { plots: { id → { cropType, stage, description, plantedAt, updatedAt } } }
@@ -8697,11 +8698,120 @@ function _diceSessionBarHtml() {
         style="${btnStyle}color:var(--text)">${raiseLabel}</button>
       <button onclick="diceResetSession();renderToolsTab()"
         style="${btnStyle}">Reset</button>
+      <button onclick="diceOpenOverlay()"
+        style="${btnStyle}${(dicePipWindow&&!dicePipWindow.closed)?'color:#7ab880;border-color:#7ab880':''}"
+        title="Open always-on-top overlay showing best move">${(dicePipWindow&&!dicePipWindow.closed)?'Overlay ●':'Overlay'}</button>
     </span>
   </div>`;
 }
 
+async function diceOpenOverlay() {
+  // Toggle: if already open, close it
+  if (dicePipWindow && !dicePipWindow.closed) {
+    dicePipWindow.close();
+    dicePipWindow = null;
+    renderToolsTab();
+    return;
+  }
+  if (!('documentPictureInPicture' in window)) {
+    alert('Document Picture-in-Picture is not supported in this browser.\nUse Chrome 116+ or Edge 116+.');
+    return;
+  }
+  try {
+    dicePipWindow = await documentPictureInPicture.requestWindow({ width: 310, height: 96 });
+    dicePipWindow.addEventListener('pagehide', () => {
+      dicePipWindow = null;
+      if (mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
+    });
+    _diceUpdateOverlay();
+    renderToolsTab(); // refresh button state
+  } catch(e) {
+    dicePipWindow = null;
+    console.error('PiP overlay error:', e);
+  }
+}
+
+function _diceUpdateOverlay() {
+  if (!dicePipWindow || dicePipWindow.closed) return;
+  const doc = dicePipWindow.document;
+
+  const C = {
+    bg: '#0d0f14', bg2: '#13161d', border: '#2a2f3f',
+    gold: '#c9a84c', text: '#d4cbbf', dim: '#8a8070',
+    green: '#50d060', red: '#d05050', dealer: '#d4b84a',
+  };
+
+  let body = '';
+
+  if (!diceGameState) {
+    body = `<div style="height:100%;display:flex;align-items:center;justify-content:center;
+                        color:${C.dim};font-size:13px">No active dice game</div>`;
+  } else if (diceGameState.outcome) {
+    const win = diceGameState.outcome === 'win';
+    const col = win ? C.green : C.red;
+    body = `<div style="height:100%;display:flex;flex-direction:column;align-items:center;
+                        justify-content:center;gap:5px">
+      <div style="font-size:24px;font-weight:700;color:${col}">${win ? 'YOU WIN' : 'YOU LOSE'}</div>
+      <div style="font-size:12px;color:${C.dim}">
+        Your score: <span style="color:${C.gold}">${diceGameState.finalPlayerScore}</span>
+        &nbsp;·&nbsp;
+        Dealer: <span style="color:${C.dealer}">${diceGameState.finalDealerScore}</span>
+      </div>
+    </div>`;
+  } else {
+    const { playerScore, dealerScore, redFaces } = diceGameState;
+    const isAhead = playerScore > dealerScore;
+    const OPTIONS = [
+      ['Pass',          0, 0, true ],
+      ['Roll 1 die',    1, 0, false],
+      ['Roll 2 dice',   2, 0, false],
+      ['Raise + Pass',  0, 1, true ],
+      ['Raise + Roll 1',1, 1, false],
+      ['Raise + Roll 2',2, 1, false],
+    ];
+    const avail = OPTIONS.map(([label, nd, hub, onlyAhead]) => {
+      if (onlyAhead && !isAhead) return null;
+      const winP = _diceCalcWinP(playerScore, dealerScore, redFaces, nd, hub);
+      const ev   = hub ? winP*6000-(1-winP)*2000 : winP*2000-(1-winP)*1000;
+      return { label, winP, ev };
+    }).filter(Boolean);
+    const best = avail.reduce((a, b) => b.ev > a.ev ? b : a);
+
+    const statusCol = isAhead ? C.green : playerScore < dealerScore ? C.red : C.gold;
+    const statusStr = playerScore > dealerScore ? `+${playerScore-dealerScore} ahead`
+                    : playerScore < dealerScore ? `${dealerScore-playerScore} behind` : 'tied';
+    const evNum = Math.round(best.ev);
+    const evStr = (evNum >= 0 ? '+' : '') + evNum.toLocaleString() + 'g';
+
+    body = `
+      <div style="padding:7px 12px;border-bottom:1px solid ${C.border};
+                  display:flex;align-items:center;gap:14px;font-size:13px">
+        <span>You: <strong style="color:${C.gold}">${playerScore}</strong></span>
+        <span>Dealer: <strong style="color:${C.dealer}">${dealerScore}</strong></span>
+        <span style="margin-left:auto;font-size:11px;color:${statusCol}">${statusStr}</span>
+      </div>
+      <div style="padding:9px 12px;display:flex;align-items:center;gap:9px">
+        <span style="font-size:16px;color:${C.green};font-weight:700;line-height:1">→</span>
+        <span style="font-size:15px;color:${C.text};font-weight:600">${best.label}</span>
+        <span style="font-size:12px;color:${statusCol}">${(best.winP*100).toFixed(1)}%</span>
+        <span style="font-size:12px;color:${best.ev>=0?C.gold:C.red};margin-left:auto">${evStr} EV</span>
+      </div>`;
+  }
+
+  doc.head.innerHTML = `<style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:${C.bg};color:${C.text};
+              font-family:Georgia,serif;overflow:hidden;font-size:14px}
+  </style>`;
+  doc.body.innerHTML = body;
+}
+
 function renderDiceTab(targetEl) {
+  _diceTabRender(targetEl);
+  _diceUpdateOverlay();
+}
+
+function _diceTabRender(targetEl) {
   const el = targetEl || document.getElementById('appContent');
   if (!el) return;
 
