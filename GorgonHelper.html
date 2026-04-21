@@ -4102,20 +4102,32 @@ function parsePlayerLogLines(lines) {
     }
 
     // ── Dice Game ─────────────────────────────────────────────────────────────
-    // ProcessTalkScreen(-346, "Dice Game", "Your score from red dice is <color=red>...<sprite=...index=N...> + ... = <color=red>TOTAL</color>\n\nDealer's score is <color=yellow>DEALER</color>...")
+    // ProcessTalkScreen(-346, "Dice Game", "Your score from red dice is <color=red><sprite index=N>...</color>... = <color=red>TOTAL</color>\n\nDealer's score is <color=yellow>DEALER</color>...")
+    // Each die may be wrapped in its own <color=red>...</color> span so we cannot rely on
+    // capturing a single block — instead we slice from "Your score" to the total marker
+    // and extract ALL index=N occurrences in that range.
     if (line.includes('"Dice Game"')) {
-      const redSectM  = line.match(/Your score from red dice is <color=red>(.*?)<\/color>/);
+      const diceStart  = line.indexOf('Your score from red dice is');
       const playerTotM = line.match(/=\s*<color=red>(\d+)<\/color>/);
       const dealerScM  = line.match(/Dealer.s score is <color=yellow>(\d+)<\/color>/);
-      if (redSectM && playerTotM && dealerScM) {
-        const faces = [...redSectM[1].matchAll(/index=(\d+)/g)].map(x => +x[1]);
-        diceGameState = {
-          playerScore: +playerTotM[1],
-          dealerScore: +dealerScM[1],
-          redFaces: faces,
-          ts: Date.now(),
-        };
-        vendorCount++;
+      if (diceStart >= 0 && playerTotM && dealerScM) {
+        const totIdx     = line.indexOf(playerTotM[0], diceStart);
+        const diceSection = totIdx > diceStart ? line.slice(diceStart, totIdx) : line.slice(diceStart);
+        const faces = [...diceSection.matchAll(/index=(\d+)/g)].map(x => +x[1]);
+        if (faces.length > 0) {
+          diceGameState = {
+            playerScore: +playerTotM[1],
+            dealerScore: +dealerScM[1],
+            redFaces: faces,
+            ts: Date.now(),
+          };
+          vendorCount++;
+          // Re-render immediately if the Dice tab is already open
+          if (mainTab === 'tools' && toolsSubTab === 'dice') {
+            const tc = document.getElementById('toolsContent');
+            if (tc) renderDiceTab(tc);
+          }
+        }
       }
     }
   }
