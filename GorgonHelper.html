@@ -637,6 +637,7 @@ let dataVersions = {}; // key -> version string read from _version field
 const WS_BRIDGE_PORT = 8766;
 let wsBridge = null;
 let wsBridgeConnected = false;
+let _wsBridgeReady = false;            // true after 'ready' message received
 let _wsBridgePendingChars = new Map(); // `CharName_Server` → {char, inv}
 let _wsBridgeReconnectTimer = null;
 
@@ -648,6 +649,7 @@ function _wsConnect() {
     wsBridge = new WebSocket(`ws://localhost:${WS_BRIDGE_PORT}`);
     wsBridge.onopen = () => {
       wsBridgeConnected = true;
+      _wsBridgeReady = false;
       _wsBridgePendingChars = new Map();
       if (_wsBridgeReconnectTimer) { clearTimeout(_wsBridgeReconnectTimer); _wsBridgeReconnectTimer = null; }
       updateHeaderChar();
@@ -670,6 +672,7 @@ function _wsHandleMsg(msg) {
   if (msg.type === 'file') {
     _wsHandleFile(msg.path, msg.content);
   } else if (msg.type === 'ready') {
+    _wsBridgeReady = true;
     _wsFlushChars(true);
     if (characters.length > 0) renderAll();
   } else if (msg.type === 'playerlog') {
@@ -701,8 +704,14 @@ function _wsHandleFile(path, content) {
     const entry = _wsBridgePendingChars.get(key);
     if (json.Report === 'CharacterSheet') entry.char = json;
     if (json.Report === 'Storage')        entry.inv  = json;
-    // After 'ready', apply individual updates immediately when both halves arrive
-    if (wsBridgeConnected && entry.char && entry.inv) _wsApplyChar(key, entry, false);
+    // Only apply live updates after the initial 'ready' dump has been flushed.
+    // Before ready, files accumulate in _wsBridgePendingChars and are applied
+    // silently in bulk by _wsFlushChars(true).  After ready, each complete pair
+    // is applied immediately and the UI is re-rendered so the player sees the
+    // updated storage/character data without having to reload the page.
+    if (_wsBridgeReady && entry.char && entry.inv) {
+      if (_wsApplyChar(key, entry, false)) renderAll();
+    }
   } catch(_) {}
 }
 
