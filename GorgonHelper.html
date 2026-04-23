@@ -8730,7 +8730,7 @@ async function diceOpenOverlay() {
     return;
   }
   try {
-    dicePipWindow = await documentPictureInPicture.requestWindow({ width: 310, height: 96 });
+    dicePipWindow = await documentPictureInPicture.requestWindow({ width: 310, height: 82 });
     dicePipWindow.addEventListener('pagehide', () => {
       dicePipWindow = null;
       if (mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
@@ -8821,17 +8821,20 @@ function _diceUpdateOverlay() {
     }[best.label] ?? lbl;
 
     body = `
-      <div style="padding:7px 12px;border-bottom:1px solid ${C.border};
-                  display:flex;align-items:center;gap:14px;font-size:13px">
-        <span>You: <strong style="color:${C.gold}">${playerScore}</strong></span>
-        <span>Dealer: <strong style="color:${C.dealer}">${dealerScore}</strong></span>
-        <span style="margin-left:auto;font-size:11px;color:${statusCol}">${statusStr}</span>
-      </div>
-      <div style="padding:7px 12px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px;color:${C.green};font-weight:700;line-height:1;flex-shrink:0">→</span>
-        <span style="display:flex;align-items:center;gap:0">${actionHtml}</span>
-        <span style="font-size:12px;color:${statusCol};margin-left:4px">${(best.winP*100).toFixed(1)}%</span>
-        <span style="font-size:12px;color:${best.ev>=0?C.gold:C.red};margin-left:auto">${evStr} EV</span>
+      <div style="height:100%;display:flex;flex-direction:column;align-items:center;
+                  justify-content:center;gap:5px;padding:0 14px">
+        <div style="font-size:12px;color:${C.dim};display:flex;align-items:center;gap:8px">
+          <span>You: <strong style="color:${C.gold}">${playerScore}</strong></span>
+          <span style="opacity:.35">·</span>
+          <span>Dealer: <strong style="color:${C.dealer}">${dealerScore}</strong></span>
+          <span style="color:${statusCol};margin-left:2px">${statusStr}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="font-size:15px;color:${C.green};font-weight:700;line-height:1">→</span>
+          <span style="display:flex;align-items:center;gap:0">${actionHtml}</span>
+          <span style="font-size:12px;color:${statusCol}">${(best.winP*100).toFixed(1)}%</span>
+          <span style="font-size:12px;color:${best.ev>=0?C.gold:C.red}">${evStr} EV</span>
+        </div>
       </div>`;
   }
 
