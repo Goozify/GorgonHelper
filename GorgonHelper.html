@@ -6405,10 +6405,13 @@ async function preloadIconsFromFolder() {
   } catch(e) {}
 }
 
-// Get icon URL for a given iconId — returns cached objectURL or null
+// Get icon URL for a given iconId.
+// Priority: objectURL from folder-handle cache → relative HTTP path (works in
+// Firefox / WebSocket-bridge mode where no folder handle is available, as long
+// as the page is served via the local HTTP server alongside the icons/ folder).
 function getIconUrl(iconId) {
   if (!iconId) return null;
-  return iconCache.get(iconId) || null;
+  return iconCache.get(iconId) ?? `icons/icon_${iconId}.png`;
 }
 
 // Get icon URL for a typeId via ITEMS lookup
