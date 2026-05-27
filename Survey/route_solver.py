@@ -36,6 +36,13 @@ def nearest_neighbor_route(
 
     # 2-opt improvement pass (includes distance from start)
     route = two_opt_improve(locations, route, start)
+    # Or-opt (node relocation) pass: moves individual stops to better positions.
+    # This fixes "should have visited nearby cluster node first" cases that
+    # 2-opt misses because they require relocating a single point, not reversing
+    # a segment.
+    route = or_opt_improve(locations, route, start)
+    # One final 2-opt pass to consolidate any gains from Or-opt.
+    route = two_opt_improve(locations, route, start)
     return route
 
 
@@ -75,4 +82,45 @@ def two_opt_improve(
                     route = new_route
                     best_dist = new_dist
                     improved = True
+    return route
+
+
+def or_opt_improve(
+    locations: List[Tuple[float, float]], route: List[int],
+    start: Tuple[float, float],
+) -> List[int]:
+    """Or-opt (node relocation) improvement.
+
+    For each stop in the route, try removing it and reinserting it at every
+    other position.  Accepts the move if the total route distance decreases.
+
+    This complements 2-opt: 2-opt reverses segments (good for untangling
+    crossing paths), while Or-opt relocates single nodes (good for fixing
+    "should have visited this nearby cluster node earlier" cases).
+    """
+    if len(route) <= 2:
+        return route
+
+    route = list(route)
+    best_dist = _route_total(locations, route, start)
+    improved = True
+    while improved:
+        improved = False
+        for i in range(len(route)):
+            node = route[i]
+            # Route without this node
+            remaining = route[:i] + route[i + 1:]
+            for j in range(len(remaining) + 1):
+                # Don't bother re-inserting at the original position
+                if j == i:
+                    continue
+                candidate = remaining[:j] + [node] + remaining[j:]
+                new_dist = _route_total(locations, candidate, start)
+                if new_dist < best_dist - 0.01:
+                    route = candidate
+                    best_dist = new_dist
+                    improved = True
+                    break  # restart outer loop with updated route
+            if improved:
+                break
     return route

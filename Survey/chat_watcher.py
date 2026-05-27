@@ -28,6 +28,20 @@ ADDED_RE = re.compile(r"\[Status\] (.+?)(?:\s+x(\d+))? added to inventory\.")
 # this more specific than "You dig until you find something!" alone.
 TC_COMPLETE_RE = re.compile(r"\[Status\] You earned \d+ XP in Treasure Cartography\b")
 
+# Favor gain from gifting: "[Status] You gained 2168 favor with Falkrin Overstrike."
+FAVOR_GAIN_RE = re.compile(r"\[Status\] You gained (\d+) favor with (.+)\.")
+
+# Motherload survey distance: "[Status] The treasure is 1026 meters from here."
+MOTHERLOAD_RE = re.compile(r"\[Status\] The treasure is (\d+) meters from here\.")
+
+# General XP gain: "[Status] You earned 1500 XP in Sword."
+# Level up:        "[Status] You earned 2000 XP in Sword and reached level 47!"
+# NOTE: placed AFTER TC_COMPLETE_RE so Treasure Cartography lines are caught
+#       by the TC check first and never reach this regex.
+XP_GAIN_RE = re.compile(
+    r"\[Status\] You earned (\d+) XP in ([^.!]+?)(?:\s+and reached level (\d+))?[.!]"
+)
+
 
 def find_newest_log(log_dir: str) -> str | None:
     pattern = os.path.join(log_dir, "Chat-*.log")
@@ -76,7 +90,11 @@ class ChatWatcher(QThread):
     survey_completed = pyqtSignal(str)             # item_name → survey map collected
     loot_received    = pyqtSignal(str, int)        # item_name, quantity → any item collected
     area_changed     = pyqtSignal(str)             # area_name
-    error_occurred   = pyqtSignal(str)             # error message
+    favor_gained        = pyqtSignal(str, int)      # npc_display_name, amount
+    motherload_distance = pyqtSignal(int)           # distance in meters
+    xp_gained           = pyqtSignal(str, int)      # skill_name, xp_amount
+    level_up            = pyqtSignal(str, int)      # skill_name, new_level
+    error_occurred      = pyqtSignal(str)           # error message
 
     def __init__(self, log_dir: str, skip_existing: bool = True, parent=None):
         super().__init__(parent)
@@ -157,3 +175,25 @@ class ChatWatcher(QThread):
             # emit the sentinel so the server marks the pending location visited
             # without doing a name-match check.
             self.survey_completed.emit("__tc_complete__")
+            return
+
+        m = FAVOR_GAIN_RE.search(line)
+        if m:
+            amount   = int(m.group(1))
+            npc_name = m.group(2)
+            self.favor_gained.emit(npc_name, amount)
+            return
+
+        m = MOTHERLOAD_RE.search(line)
+        if m:
+            self.motherload_distance.emit(int(m.group(1)))
+            return
+
+        m = XP_GAIN_RE.search(line)
+        if m:
+            xp        = int(m.group(1))
+            skill     = m.group(2).strip()
+            new_level = m.group(3)
+            self.xp_gained.emit(skill, xp)
+            if new_level:
+                self.level_up.emit(skill, int(new_level))

@@ -96,6 +96,18 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .search-clear.visible{opacity:1;pointer-events:auto}
 .search-clear:hover{background:var(--red);color:#fff}
 .search-icon{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:14px;pointer-events:none}
+.kw-dd-wrap{position:relative;width:170px;flex-shrink:0}
+.kw-dd-input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px 26px 9px 10px;font-family:'Crimson Pro',serif;font-size:13px;cursor:pointer;outline:none;transition:border-color .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw-dd-input:focus{border-color:var(--gold-dim)}
+.kw-dd-input::placeholder{color:var(--text-dim)}
+.kw-dd-input.has-value{color:var(--gold-light);border-color:var(--gold-dim)}
+.kw-dd-arrow{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--text-dim);pointer-events:none}
+.kw-dd-clear{position:absolute;right:22px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;background:var(--border-light);border:none;cursor:pointer;color:var(--text-dim);font-size:9px;display:flex;align-items:center;justify-content:center;transition:background .12s;z-index:1}
+.kw-dd-clear:hover{background:var(--red);color:#fff}
+.kw-dd-list{position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:400;background:var(--bg2);border:1px solid var(--border);border-radius:5px;max-height:280px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.6)}
+.kw-dd-item{padding:5px 10px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw-dd-item:hover{background:rgba(255,255,255,.06)}
+.kw-dd-item.kw-selected{color:var(--gold)}
 .search-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:5px}
 .search-count{font-size:12px;color:var(--text-dim)}
 .search-count span{color:var(--gold)}
@@ -131,7 +143,10 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .total-badge.small{font-size:10px;color:var(--text-dim)}
 
 /* ── Item tooltip ── */
-.item-tooltip{position:fixed;z-index:600;background:var(--bg2);border:1px solid var(--border-light);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.7);padding:12px;min-width:220px;max-width:320px;pointer-events:none;animation:fadeIn .1s ease}
+.item-tooltip{position:fixed;z-index:600;background:var(--bg2);border:1px solid var(--border-light);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.7);padding:13px 14px;min-width:240px;max-width:360px;pointer-events:none;animation:fadeIn .1s ease}
+.tooltip-desc{font-size:12px;color:var(--text-dim);font-style:italic;line-height:1.55;margin-bottom:8px;margin-top:2px}
+.tooltip-skillreq{font-size:11px;color:var(--orange);line-height:1.6}
+.tooltip-note{font-size:11px;color:var(--gold-dim);border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-style:italic;line-height:1.5}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 .tooltip-title{font-family:'Cinzel',serif;font-size:11px;color:var(--gold);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
 .tooltip-recipe{margin-bottom:6px;padding:5px 7px;background:var(--bg3);border-radius:4px;border:1px solid var(--border)}
@@ -242,8 +257,6 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 
 /* ── Recipes tab ── */
 .recipe-controls{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
-.recipe-skill-filter{background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text);outline:none;cursor:pointer}
-.recipe-skill-filter:focus{border-color:var(--gold-dim)}
 .recipe-table{width:100%;border-collapse:collapse}
 .recipe-table th{font-family:'Cinzel',serif;font-size:9px;letter-spacing:.1em;color:var(--gold-dim);text-transform:uppercase;padding:5px 9px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border)}
 .recipe-table th.c{text-align:center}
@@ -253,12 +266,20 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .recipe-name{color:var(--text-bright);font-weight:600}
 .recipe-skill-tag{font-size:10px;padding:2px 7px;border-radius:3px;background:var(--bg3);border:1px solid var(--border);color:var(--text-dim)}
 .recipe-count{font-family:'Cinzel',serif;font-size:12px;color:var(--gold);text-align:right}
+.recipe-yield-badge{font-size:10px;color:var(--gold);background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:3px;padding:0 5px;font-family:'Cinzel',serif;white-space:nowrap;vertical-align:middle;margin-left:3px}
 .char-dot{display:inline-block;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg3);font-family:'Cinzel',serif;font-size:10px;color:var(--gold);text-align:center;line-height:18px;cursor:default}
 .char-dot.has{background:rgba(90,153,96,.2);border-color:rgba(90,153,96,.5);color:#7ab880}
 .char-dot.no{opacity:.3}
 
 /* ── Settings ── */
 .settings-section{max-width:700px;margin-bottom:30px}
+.ws-log-box{margin-top:10px;background:var(--bg1);border:1px solid var(--border);border-radius:5px;max-height:220px;overflow-y:auto;font-family:'Courier New',monospace;font-size:11px;line-height:1.7}
+.ws-log-row{display:grid;grid-template-columns:60px 110px 1fr;gap:0 8px;padding:2px 10px;border-bottom:1px solid rgba(42,47,63,.35)}
+.ws-log-row:last-child{border-bottom:none}
+.ws-log-row:hover{background:rgba(255,255,255,.03)}
+.ws-log-ts{color:var(--text-dim)}
+.ws-log-char{color:var(--gold-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-log-msg{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .settings-title{font-family:'Cinzel',serif;font-size:13px;color:var(--gold);margin-bottom:12px;padding-bottom:7px;border-bottom:1px solid var(--border)}
 .settings-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(42,47,63,.4)}
 .settings-row:last-child{border-bottom:none}
@@ -331,6 +352,13 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .favor-pin-btn:hover{color:var(--gold)}
 .favor-pin-btn.pinned{opacity:1;color:var(--gold)}
 .favor-row:hover .favor-pin-btn{opacity:1}
+/* Storage: star + note */
+.item-star-btn{opacity:0;font-size:12px;color:var(--text-dim);cursor:pointer;margin-left:5px;transition:opacity .1s,color .1s;user-select:none;line-height:1;display:inline-block;vertical-align:middle}
+.item-star-btn:hover{color:var(--gold)}
+.item-star-btn.starred{opacity:1;color:var(--gold)}
+.item-row:hover .item-star-btn{opacity:1}
+.item-icon.has-note{outline:1.5px solid var(--gold);border-radius:4px}
+.storage-section-hdr td{padding:3px 9px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:.12em;color:var(--gold-dim);text-transform:uppercase;background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .npc-store-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(80,140,200,0.1);border:1px solid rgba(80,140,200,0.22);color:var(--text-dim);white-space:nowrap;display:inline-block}
 .npc-consign-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(120,180,100,0.1);border:1px solid rgba(120,180,100,0.22);color:var(--text-dim);white-space:nowrap;display:inline-block}
 .pinned-skill-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,47,63,.4)}
@@ -382,6 +410,12 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 .map-service-chip{display:inline-flex;font-size:10px;padding:2px 7px;border-radius:3px;border:1px solid var(--border);background:var(--bg2);color:var(--text-dim);margin:2px 3px 2px 0}
 .map-legend-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);margin-bottom:3px}
 .map-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid rgba(0,0,0,.4)}
+
+/* ── Quests / Work Orders sub-tab toggle ── */
+.quests-subtab-bar{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px}
+.quests-subtab{font-family:'Cinzel',serif;font-size:12px;padding:8px 20px;cursor:pointer;color:var(--text-dim);border-bottom:2px solid transparent;transition:all .15s;letter-spacing:.04em;white-space:nowrap;margin-bottom:-1px}
+.quests-subtab:hover{color:var(--text)}
+.quests-subtab.active{color:var(--gold);border-bottom-color:var(--gold)}
 
 /* ── Quests tab ── */
 .quest-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
@@ -474,7 +508,6 @@ body{font-family:'Crimson Pro',Georgia,serif;background:var(--bg);color:var(--te
 <div class="main-nav" id="main-nav">
   <button class="nav-hamburger" onclick="toggleNavMenu()">☰</button>
   <div class="nav-tab active" id="nav-storage" onclick="setMainTab('storage')">Storage</div>
-  <div class="nav-tab" id="nav-workorders" onclick="setMainTab('workorders')">Work Orders</div>
   <div class="nav-tab" id="nav-recipes" onclick="setMainTab('recipes')">Recipes</div>
   <div class="nav-tab" id="nav-vaults" onclick="setMainTab('vaults')">Storage Vaults</div>
   <div class="nav-tab" id="nav-favors" onclick="setMainTab('favors')">Favors</div>
@@ -501,11 +534,16 @@ let searchMode = 'single';
 let activeVaultFilter = null;
 let activeTownFilter = '';
 let showConsolidateOnly = false;
+let storageKeyFilter = '';          // raw keyword currently selected ('' = none)
+let storageKeyOpen   = false;       // keyword dropdown open
+let storageKeySearch = '';          // text typed in keyword dropdown input
+let _storageKeyList  = [];          // [{raw, label}] built during render
+let _storageKeyClickListenerAdded = false;
 let storageSortCol = 'name'; // 'name' | 'location' | 'total'
 let storageSortDir = 'asc';
 
 // Tools tab state
-let toolsSubTab = 'safecracking'; // 'safecracking' | 'survey' | 'gardening' | 'dice'
+let toolsSubTab = 'survey'; // 'survey' | 'gardening' | 'safecracking' | 'dice'
 let diceGameState = null; // { playerScore, dealerScore, redFaces: number[], ts: number } | null
 let diceRefreshTimer = null; // ticks the result screen counter + auto-clears stale results
 let _diceLastRaw = null;    // last raw "Dice Game" log line received (for debug display)
@@ -582,6 +620,12 @@ let surveyPlayerMeters = null;
 let surveyCirclePins = [];
 let surveyCompletion = null; // {total, elapsed_seconds, loot} — set on survey_all_complete
 let surveyMapAreaOverride = null; // null = follow surveyActiveArea; else manual override
+let motherloadReadings = [];      // [{east, south, distance}, ...] from motherload_update
+let motherloadTriangulated = null; // {east, south} or null
+let surveyMotherloadMode      = false; // true = left panel shows motherload UI instead of location list
+let surveyMotherloadTracking  = false; // true = map+inv overlays active for player position
+let surveyMotherloadSlot      = 0;     // current inventory slot index being used
+let surveyMotherloadSuggested = [];    // [{east,south}] suggested waypoints for next reading
 let _surveyMapImgCache = {};      // area → HTMLImageElement (loaded)
 
 // Map calibration data: merged (manual overrides wiki).
@@ -615,7 +659,7 @@ const SURVEY_MAP_FILE = {
 // Game data (loaded from files)
 const APP_VERSION = '0.1.19';
 
-let ITEMS = {};           // id -> [name, maxStack, iconId, value, keywords[]]
+let ITEMS = {};           // id -> [name, maxStack, iconId, internalName, keywords[], description, skillReqs]
 let RECIPES = {};         // internalName -> [name, skill, [[ingId,qty]...], [[resId,qty]...]]
 let RECIPE_RID_MAP = {};  // numeric rid -> internalName (built from CDN recipes.json)
 let ITEMUSES = {};        // id -> [recipeInternalName, ...]
@@ -628,6 +672,7 @@ let VAULTS = {};          // vaultKey -> {name, area, numSlots, levels, grouping
 let QUESTS = {};          // internalName -> {name, loc, npc, npcName, objs:[{t,n,d?,tid?}]}
 let LANDMARKS = {};       // areaName -> [{name, type, desc, x, z}]
 let TSYS = {};       // InternalName -> { tierNum: [EffectDescStrings] }
+let TSYS_SKILLS = {}; // PowerInternalName -> SkillName (e.g. "MentalismBoost" -> "Mentalism")
 let ABILITIES = {};  // InternalName -> { name, iconId }
 let ABILITIES_LOWER = {}; // lowercase InternalName -> { name, iconId }
 let dataLoaded = { items: false, recipes: false, itemuses: false, sources_recipes: false, sources_items: false, npcs: false, vaults: false, quests: false, landmarks: false, npc_training: false, tsys: false, abilities: false };
@@ -652,6 +697,8 @@ function _wsConnect() {
       _wsBridgeReady = false;
       _wsBridgePendingChars = new Map();
       if (_wsBridgeReconnectTimer) { clearTimeout(_wsBridgeReconnectTimer); _wsBridgeReconnectTimer = null; }
+      // Pause file polling — bridge handles all file updates
+      if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
       updateHeaderChar();
       renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
@@ -662,6 +709,8 @@ function _wsConnect() {
       updateHeaderChar();
       renderCharTabs();
       if (mainTab === 'settings') renderSettingsTab();
+      // Resume file polling when bridge disconnects (if folder is open)
+      if (folderHandle) startAutoRefresh();
       _wsBridgeReconnectTimer = setTimeout(_wsConnect, 10_000);
     };
     wsBridge.onerror = () => {}; // onclose handles retry
@@ -670,22 +719,83 @@ function _wsConnect() {
 
 function _wsHandleMsg(msg) {
   if (msg.type === 'file') {
-    _wsHandleFile(msg.path, msg.content);
+    _wsHandleFile(msg.path, msg.content, msg.mtime);
   } else if (msg.type === 'ready') {
     _wsBridgeReady = true;
     _wsFlushChars(true);
+    // After flushing characters, prefer the currently logged-in character (from player log /
+    // localStorage) over the arbitrary first-file order from the bridge's folder scan.
+    if (currentLogChar && characters.length > 0) {
+      const matched = characters.find(c => c.charData.Character === currentLogChar);
+      if (matched) { activeCharId = matched.id; sellGiftCharId = matched.id; }
+    }
     if (characters.length > 0) renderAll();
   } else if (msg.type === 'playerlog') {
     const count = parsePlayerLogLines(msg.lines);
     savePlayerLogData();
-    if (count > 0 && mainTab === 'favors') renderFavorsTab();
-    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
-    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
-    if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+    if (_parseLogCharChanged && characters.length > 0) {
+      // ProcessAddPlayer fired — switch to the newly logged-in character so all tabs
+      // show the correct character without the user having to click the tab manually.
+      const matched = characters.find(c => c.charData.Character === currentLogChar);
+      if (matched) { activeCharId = matched.id; sellGiftCharId = matched.id; }
+      renderAll();
+    } else {
+      if (count > 0 && mainTab === 'favors') renderFavorsTab();
+      if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+      if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
+      if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+      if (mainTab === 'settings') renderSettingsTab();
+    }
+  } else if (msg.type === 'xp_gained') {
+    const skill = msg.skill || '?';
+    const xp    = msg.xp   || 0;
+    sessionXp[skill] = (sessionXp[skill] || 0) + xp;
+    // Only push to rolling window if the FSAPI chat log watcher isn't already doing it
+    if (!chatLogFolderHandle) {
+      xpEvents.push({ skill, xp, ts: Date.now() });
+      _xpPruneOld();
+      _saveXpEvents();
+      if (mainTab === 'storage' && activeCharId !== '__sellgift__') {
+        const char = characters.find(c => c.id === activeCharId);
+        if (char) renderLeft(char);
+      }
+    }
+  } else if (msg.type === 'level_up') {
+    const skill = msg.skill || '?';
+    const level = msg.level || 0;
+    showToast(`🎉 ${skill} reached level ${level}!`, 'success');
+  } else if (msg.type === 'favor_gained') {
+    // Skip if the FSAPI chat-log watcher is active — it already handled this line
+    if (!chatLogFolderHandle) {
+      const npcKey = _npcKeyByName(msg.npc_name);
+      const char   = currentLogChar;
+      if (!char)   console.warn('[favor] currentLogChar is empty — player log not yet parsed?');
+      if (!npcKey) console.warn('[favor] NPC not found in database:', msg.npc_name);
+      if (char && npcKey) {
+        if (!playerLogData[char]) playerLogData[char] = { npcs: {}, idMap: {} };
+        const d = playerLogData[char];
+        if (!d.npcs[npcKey]) d.npcs[npcKey] = {};
+        const prev = d.npcs[npcKey].exactFavor ?? null;
+        if (prev != null) {
+          d.npcs[npcKey].exactFavor = prev + msg.amount;
+        } else {
+          const charObj  = characters.find(c => c.charData?.Character === char);
+          const tierName = charObj?.charData?.NPCs?.[npcKey]?.FavorLevel ?? null;
+          const floor    = tierName != null ? (FAVOR_TIER_FLOORS[tierName] ?? 0) : 0;
+          d.npcs[npcKey].exactFavor = floor + msg.amount;
+        }
+        d.npcs[npcKey].loggedAt = Date.now();
+        savePlayerLogData();
+      }
+      // Re-render regardless — even if NPC lookup failed the tab state may be stale
+      if (mainTab === 'favors') renderFavorsTab();
+      if (mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+      showToast(`↑ ${msg.npc_name} +${msg.amount.toLocaleString()} favor`);
+    }
   }
 }
 
-function _wsHandleFile(path, content) {
+function _wsHandleFile(path, content, mtime) {
   // Game data from Json/ subfolder — CDN format, needs processCDNData
   if (path.startsWith('Json/')) {
     const filename = path.slice(5);
@@ -696,14 +806,18 @@ function _wsHandleFile(path, content) {
     return;
   }
   // Character / inventory JSON
+  // mtime (Unix seconds float from bridge) is used to keep only the newest file
+  // when multiple timestamped snapshots exist for the same character (e.g. many
+  // *_items_*Z.json files accumulating in the root folder).
   try {
     const json = JSON.parse(content);
     if (!json.Character || !json.ServerName || !json.Report) return;
     const key = `${json.Character}_${json.ServerName}`;
     if (!_wsBridgePendingChars.has(key)) _wsBridgePendingChars.set(key, {});
     const entry = _wsBridgePendingChars.get(key);
-    if (json.Report === 'CharacterSheet') entry.char = json;
-    if (json.Report === 'Storage')        entry.inv  = json;
+    const mt = mtime ?? 0;
+    if (json.Report === 'CharacterSheet' && mt >= (entry.charMod ?? 0)) { entry.char = json; entry.charMod = mt; }
+    if (json.Report === 'Storage'        && mt >= (entry.invMod  ?? 0)) { entry.inv  = json; entry.invMod  = mt; }
     // Only apply live updates after the initial 'ready' dump has been flushed.
     // Before ready, files accumulate in _wsBridgePendingChars and are applied
     // silently in bulk by _wsFlushChars(true).  After ready, each complete pair
@@ -740,9 +854,26 @@ function _wsFlushChars(isInitial) {
   return anyChange;
 }
 
+// ── WebSocket bridge event log ──
+const WS_LOG_MAX = 200;
+let wsBridgeLog = [];           // [{ts, char, msg}] newest-first, capped at WS_LOG_MAX
+function _wsLog(char, msg) {
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8); // HH:MM:SS
+  wsBridgeLog.unshift({ ts, char: char || '?', msg });
+  if (wsBridgeLog.length > WS_LOG_MAX) wsBridgeLog.length = WS_LOG_MAX;
+}
+
 // ── Player log data ──
 let playerLogData = {};         // charName → { npcs: {npcKey→{currentGold,maxGold,resetAt,favorLevel,loggedAt}}, idMap: {id→npcKey} }
+// 2147483647 = Int32.MaxValue — game sentinel for buy-only NPCs with no gold cap.
+// Returns true only for real, displayable gold values.
+const _goldOk = v => v != null && v < 2147483647;
+let sessionXp = {};             // skill → total XP earned this session (from chat log via WS)
+let xpEvents  = [];             // [{skill, xp, ts}] — timestamped events for rolling 1-hour window
+let xpTrackerExpanded = localStorage.getItem('pgXpTrackerExpanded') === '1'; // collapsed by default
 let currentLogChar = '';        // character name detected from ProcessAddPlayer
+let _parseLogCharChanged = false; // set true by parsePlayerLogLines when ProcessAddPlayer changes currentLogChar
 let playerLogFileHandle = null; // FileSystem Access API file handle
 let playerLogFileSize = 0;      // bytes read so far (incremental polling)
 let playerLogWatchActive = false;
@@ -764,6 +895,7 @@ let _pendingNewItems = {};           // charName → {instanceId → typeId} —
 let _sgItemStash = {};               // charName → {instanceId → full item object} — stashed while in storage
 let _sgLastVendorKey = null;         // npcKey of last vendor we detected a sale to
 let _sgPendingSaleGold = 0;          // accumulated item Value to deduct once VendorUpdateAvailableGold fires
+let _sgVaultEntityMap = {};          // charName → {entityId(str) → vaultName} — updated by ProcessShowStorageVault
 
 // ═══════════════════════════════════════════════════════════
 // INDEXEDDB — single DB, multiple stores
@@ -773,7 +905,7 @@ let db = null;
 
 function openDB() {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, 6);
+    const req = indexedDB.open(IDB_NAME, 7);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('folder_handle'))    d.createObjectStore('folder_handle');
@@ -783,6 +915,8 @@ function openDB() {
       if (!d.objectStoreNames.contains('player_log_handle')) d.createObjectStore('player_log_handle');
       if (!d.objectStoreNames.contains('pinned_npcs'))      d.createObjectStore('pinned_npcs');
       if (!d.objectStoreNames.contains('player_log_data'))  d.createObjectStore('player_log_data');
+      if (!d.objectStoreNames.contains('pinned_items'))     d.createObjectStore('pinned_items');
+      if (!d.objectStoreNames.contains('item_notes'))       d.createObjectStore('item_notes');
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
     req.onerror = () => rej();
@@ -864,6 +998,11 @@ let pinnedSkillsCache = {}; // charId -> Set<skillName>
 // Pinned NPCs per character (favors tab)
 let pinnedNpcsCache = {}; // charId -> Set<npcKey>
 
+// Starred items in storage (global, not per-character)
+let pinnedItemsCache = new Set(); // Set<itemName>
+// Item notes in storage (global)
+let itemNotesCache = {}; // itemName -> note string
+
 async function loadPinnedSkills() {
   const keys = await dbGetAllKeys('pinned_skills');
   for (const k of keys) {
@@ -913,6 +1052,35 @@ async function togglePinnedNpc(charId, npcKey) {
   renderFavorsTab();
 }
 
+// ── Storage: starred items ────────────────────────────────────────────────────
+async function loadPinnedItems() {
+  const val = await dbGet('pinned_items', 'all');
+  if (Array.isArray(val)) pinnedItemsCache = new Set(val);
+}
+async function savePinnedItems() {
+  await dbPut('pinned_items', 'all', [...pinnedItemsCache]);
+}
+async function togglePinnedItem(itemName) {
+  if (pinnedItemsCache.has(itemName)) pinnedItemsCache.delete(itemName);
+  else pinnedItemsCache.add(itemName);
+  await savePinnedItems();
+  rerenderRight();
+}
+
+// ── Storage: item notes ───────────────────────────────────────────────────────
+async function loadItemNotes() {
+  const val = await dbGet('item_notes', 'all');
+  if (val && typeof val === 'object') itemNotesCache = val;
+}
+async function saveItemNote(itemName, text) {
+  if (text.trim()) itemNotesCache[itemName] = text.trim();
+  else delete itemNotesCache[itemName];
+  await dbPut('item_notes', 'all', itemNotesCache);
+}
+function getItemNote(itemName) {
+  return itemNotesCache[itemName] || '';
+}
+
 // ═══════════════════════════════════════════════════════════
 // FOLDER WATCHING
 // ═══════════════════════════════════════════════════════════
@@ -921,6 +1089,15 @@ let autoRefreshInterval = null;
 let fileSnapshot = new Map();
 const POLL_INTERVAL = 5000;
 const CHAR_EXPORT_FOLDER = 'character_exports';
+
+// Chat log watcher (browser-side FSAPI) — tracks XP without the survey server
+let chatLogFolderHandle = null;
+let _chatLogLastFile    = '';     // name of the Chat-*.log currently being tailed
+let _chatLogOffset      = 0;      // byte offset we've read up to
+let _chatLogInterval    = null;   // setInterval handle
+const CHAT_LOG_POLL_MS  = 3000;
+const _CHAT_XP_RE    = /\[Status\] You earned (\d+) XP in ([^.!\r\n]+?)(?:\s+and reached level (\d+))?[.!]/;
+const _CHAT_FAVOR_RE = /You gained (\d+) favor with (.+?)\./;
 
 async function saveFolderHandle(h)  { try { await dbPut('folder_handle','folder',h); } catch(e){} }
 async function loadFolderHandle()   { return dbGet('folder_handle','folder'); }
@@ -987,6 +1164,7 @@ async function manualRefresh() {
 
 function startAutoRefresh() {
   if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  if (wsBridgeConnected) return; // Bridge is active; it handles file updates
   autoRefreshInterval = setInterval(() => folderHandle && scanFolder(false), POLL_INTERVAL);
   updateAutoStatus('auto');
 }
@@ -1023,6 +1201,7 @@ async function moveGameExports() {
 
 async function scanFolder(isInitial) {
   if (!folderHandle) return;
+  if (!isInitial && wsBridgeConnected) return; // Bridge is active; skip polling
 
   // Move any game exports from root into character_exports/ subfolder
   await moveGameExports();
@@ -1108,7 +1287,17 @@ async function scanFolder(isInitial) {
     }
   }
 
-  if (anyChange) { if (!activeCharId && characters.length > 0) activeCharId = characters[0].id; renderAll(); if (!isInitial) updateAutoStatus('updated'); }
+  if (anyChange) {
+    if (!activeCharId && characters.length > 0) activeCharId = characters[0].id;
+    // On initial scan, prefer the currently logged-in character (from player log / localStorage)
+    // over the arbitrary file-scan order.
+    if (isInitial && currentLogChar) {
+      const matched = characters.find(c => c.charData.Character === currentLogChar);
+      if (matched) { activeCharId = matched.id; sellGiftCharId = matched.id; }
+    }
+    renderAll();
+    if (!isInitial) updateAutoStatus('updated');
+  }
   if (isInitial && byChar.size === 0) showToast('No character JSON pairs found');
 }
 
@@ -1160,7 +1349,7 @@ function applyGameData(key, data) {
       if (v[3]) ITEMS_BY_INTERNAL_NAME[v[3]] = id;
     }
   }
-  if (key === 'recipes')         { RECIPES = data; dataLoaded.recipes = true; buildRecipeCaches(); }
+  if (key === 'recipes')         { RECIPES = data; dataLoaded.recipes = true; buildRecipeCaches(); _recipeByResultId = null; }
   if (key === 'itemuses')        { ITEMUSES = data; dataLoaded.itemuses = true; }
   if (key === 'sources_recipes') {
     SOURCES_RECIPES = data; dataLoaded.sources_recipes = true;
@@ -1558,19 +1747,22 @@ function setMainTab(tab) {
   expandedRecipes.clear();
   _availWOEntries = null;
   // Tabs that don't support __all__ or __availwo__ — fall back to first char
-  const supportsAll   = new Set(['workorders','vaults','favors','quests']);
-  const supportsAvail = new Set(['workorders']);
+  const supportsAll   = new Set(['vaults','favors','quests']);
+  const supportsAvail = new Set(['quests']);
   if (activeCharId === '__all__'      && !supportsAll.has(tab))   activeCharId = characters[0]?.id || null;
   if (activeCharId === '__availwo__'  && !supportsAvail.has(tab)) activeCharId = characters[0]?.id || null;
+  // __availwo__ is only valid in the workorders sub-tab of quests
+  if (activeCharId === '__availwo__' && tab === 'quests' && questsSubTab !== 'workorders') activeCharId = characters[0]?.id || null;
   if (activeCharId === '__sellgift__' && tab !== 'storage')       activeCharId = characters[0]?.id || null;
-  if (tab !== 'storage') { sellGiftCharId = null; sellGiftSelected = null; }
+  if (tab !== 'storage') { sellGiftCharId = null; sellGiftSelected = null; storageKeyOpen = false; }
+  if (tab !== 'recipes') { recipeSkillOpen = false; }
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('nav-' + tab)?.classList.add('active');
   document.getElementById('main-nav')?.classList.remove('nav-open');
   // Update settings button highlight
   const sb = document.getElementById('hdr-settings-btn');
   if (sb) sb.style.borderColor = tab === 'settings' ? 'var(--gold-dim)' : 'var(--border)';
-  const showCharTabs = (tab === 'storage' || tab === 'workorders' || tab === 'vaults' || tab === 'favors' || tab === 'quests' || tab === 'recipes');
+  const showCharTabs = (tab === 'storage' || tab === 'vaults' || tab === 'favors' || tab === 'quests' || tab === 'recipes');
   document.getElementById('charTabsRow').style.display = showCharTabs ? '' : 'none';
   renderAll();
 }
@@ -1584,14 +1776,17 @@ function renderAll() {
   }
   renderCharTabs();
   if (mainTab === 'storage')         renderStorageTab();
-  else if (mainTab === 'workorders') {
-    if (activeCharId === '__availwo__') renderAvailableWOsTab();
-    else renderWorkOrdersTab();
-  }
   else if (mainTab === 'recipes')    renderRecipesTab();
   else if (mainTab === 'vaults')     renderVaultsTab();
   else if (mainTab === 'favors')     renderFavorsTab();
-  else if (mainTab === 'quests')     renderQuestsTab();
+  else if (mainTab === 'quests') {
+    if (questsSubTab === 'workorders') {
+      if (activeCharId === '__availwo__') renderAvailableWOsTab();
+      else renderWorkOrdersTab();
+    } else {
+      renderQuestsTab();
+    }
+  }
   else if (mainTab === 'maps')       renderMapsTab();
   else if (mainTab === 'settings')   renderSettingsTab();
   else if (mainTab === 'tools')         renderToolsTab();
@@ -1599,8 +1794,8 @@ function renderAll() {
 
 function renderCharTabs() {
   const el = document.getElementById('charTabsRow');
-  if (mainTab !== 'storage' && mainTab !== 'workorders' && mainTab !== 'vaults' && mainTab !== 'favors' && mainTab !== 'quests' && mainTab !== 'maps' && mainTab !== 'recipes') { el.innerHTML=''; return; }
-  const isWO = (mainTab === 'workorders');
+  if (mainTab !== 'storage' && mainTab !== 'vaults' && mainTab !== 'favors' && mainTab !== 'quests' && mainTab !== 'maps' && mainTab !== 'recipes') { el.innerHTML=''; return; }
+  const isWO = (mainTab === 'quests' && questsSubTab === 'workorders');
   const isVault = (mainTab === 'vaults');
   const isFavor = (mainTab === 'favors');
   const isQuest = (mainTab === 'quests');
@@ -1658,6 +1853,7 @@ const _SG_RARITY_ORDER = ['', 'Uncommon', 'Rare', 'Exceptional', 'Epic', 'Legend
 function sgPrefKwMatch(kw, kset, rarity, value) {
   if (kw.startsWith('!'))            return !kset.has(kw.slice(1));
   if (kw.startsWith('EquipmentSlot:')) return kset.has(kw.slice(14));
+  if (kw.startsWith('SkillPrereq:')) return kset.has(kw); // kset includes 'SkillPrereq:X' from item SkillReqs
   if (kw.startsWith('MinRarity:')) {
     const minIdx  = _SG_RARITY_ORDER.indexOf(kw.slice(10));
     const itemIdx = _SG_RARITY_ORDER.indexOf(rarity || '');
@@ -1666,7 +1862,7 @@ function sgPrefKwMatch(kw, kset, rarity, value) {
   if (kw.startsWith('MinValue:'))    return (value || 0) >= parseInt(kw.slice(9));
   if (kw === 'Crafted:y')            return !kset.has('Loot') && !kset.has('Stock');
   if (kw === 'Rarity:Common')        return !rarity;
-  if (kw.includes(':'))              return false; // SkillPrereq:X, Special:X — can't evaluate, skip safely
+  if (kw.includes(':'))              return false; // Special:X, unknown colon-prefixed — skip safely
   return kset.has(kw);
 }
 
@@ -1743,6 +1939,9 @@ function sgMoveItemToStorage(charName, typeId, instanceId) {
   if (!_sgItemStash[charName]) _sgItemStash[charName] = {};
   _sgItemStash[charName][instanceId] = items[idx];
   items.splice(idx, 1);
+  // Rebuild aggregated items so the Storage tab reflects the change immediately
+  char.items = processInventory(char.invData);
+  invalidateCharItemMap(char.id);
   showToast(`Stored ${itemName}`);
   return true;
 }
@@ -1758,6 +1957,9 @@ function sgAddInventoryItem(charName, typeId, instanceId) {
     delete _sgItemStash[charName][instanceId];
     stashed.IsInInventory = true;
     items.push(stashed);
+    // Rebuild aggregated items so the Storage tab reflects the change immediately
+    char.items = processInventory(char.invData);
+    invalidateCharItemMap(char.id);
     showToast(`Took ${stashed.Name || ITEMS[String(typeId)]?.[0] || 'item'} from storage`);
     return true;
   }
@@ -1770,6 +1972,9 @@ function sgAddInventoryItem(charName, typeId, instanceId) {
   // Item was genuinely in storage at export time — add a minimal entry now that it's in inventory
   const displayName = ITEMS[String(typeId)]?.[0] || '';
   items.push({ TypeID: parseInt(typeId), Name: displayName, IsInInventory: true });
+  // Rebuild aggregated items so the Storage tab reflects the change immediately
+  char.items = processInventory(char.invData);
+  invalidateCharItemMap(char.id);
   showToast(`Took ${displayName} from storage`);
   return true;
 }
@@ -1822,9 +2027,9 @@ function sgShowNpcTooltip(e, npcKey) {
     ? `<div style="margin-bottom:6px">${renderFavorCell(favorLevel, exactFavor)}</div>`
     : `<div style="color:var(--text-dim);font-size:11px;margin-bottom:6px">Favor unknown</div>`;
 
-  // Gold
+  // Gold (live, from player log)
   let goldHtml = '';
-  if (log?.currentGold != null) {
+  if (_goldOk(log?.currentGold)) {
     const pct   = log.maxGold > 0 ? Math.round(log.currentGold / log.maxGold * 100) : 0;
     const gCol  = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
     const reset = formatGoldReset(log.resetAt);
@@ -1841,7 +2046,26 @@ function sgShowNpcTooltip(e, npcKey) {
         </div>
         <div style="font-size:10px;color:var(--text-dim)">Resets in <span style="color:var(--text)">${reset}</span></div>
       </div>`;
-  } else {
+  }
+
+  // Gold cap table (from game data)
+  const { goldTiers: _sgTiers } = dataLoaded.npcs ? getNpcServiceItemTypes(npcKey) : { goldTiers: [] };
+  if (_sgTiers.length) {
+    const tierRows = _sgTiers.map(({ favor, gold }) => {
+      const isCurrent = favor === favorLevel;
+      const fc = FAVOR_COLORS[favor];
+      const col = fc ? fc.text : 'var(--text-dim)';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:1px 0${isCurrent ? ';background:var(--bg3);border-radius:3px;padding:2px 4px;margin:0 -4px' : ''}">
+        <span style="font-size:10px;min-width:8px;color:${isCurrent ? 'var(--gold)' : 'var(--bg3)'}">▶</span>
+        <span style="font-size:10px;min-width:78px;color:${isCurrent ? col : 'var(--text-dim)'}">${favor}</span>
+        <span style="font-size:10px;${isCurrent ? `color:var(--gold);font-weight:600` : 'color:var(--text-dim)'}">🪙 ${gold.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+    goldHtml += `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:${_goldOk(log?.currentGold) ? 6 : 2}px">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">Gold Cap by Favor</div>
+      ${tierRows}
+    </div>`;
+  } else if (!_goldOk(log?.currentGold)) {
     goldHtml = `<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:2px;font-size:10px;color:var(--text-dim)">Gold unknown — visit NPC to update</div>`;
   }
 
@@ -1881,7 +2105,9 @@ function sgBuildNpcItemMap(items) {
   items.forEach((it, idx) => {
     if (sellGiftMarked.has(it.TypeID)) return; // skip locked items
     const tid = String(it.TypeID);
-    const kws = ITEMS[tid]?.[4] || [];
+    const _baseKws = ITEMS[tid]?.[4] || [];
+    const _tsysPrereqs = (it.TSysPowers || []).map(p => TSYS_SKILLS[p.Power]).filter(Boolean).map(sk => 'SkillPrereq:' + sk);
+    const kws = _tsysPrereqs.length ? [...new Set([..._baseKws, ..._tsysPrereqs])] : _baseKws;
     const rarity = it.Rarity || '';
     const value = it.Value || 0;
     sgGetSellNpcs(kws).forEach(n => {
@@ -1997,7 +2223,9 @@ function sgDecodeToken(token, iconSz) {
   function abilIcon(lower) {
     const info = ABILITIES_LOWER[lower];
     if (!info?.iconId) return '';
-    const url = getIconUrl(info.iconId) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${info.iconId}.png`;
+    // Use cached blob URL first; fall back to CDN (getIconUrl returns a local path
+    // string that is always truthy even when the file doesn't exist, so we bypass it)
+    const url = iconCache.get(info.iconId) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${info.iconId}.png`;
     return `<img src="${url}" width="${iconSz}" height="${iconSz}" style="vertical-align:middle;margin-right:3px;image-rendering:pixelated;border-radius:2px">`;
   }
   function abilName(lower) {
@@ -2033,10 +2261,85 @@ function sgParsePowerDesc(desc, sz) {
   sz = sz || 16;
   if (desc.startsWith('{') && !desc.includes('<icon=')) return sgDecodeToken(desc, sz);
   return desc.replace(/<icon=(\d+)>/g, (_, id) => {
-    const url = getIconUrl(+id) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${id}.png`;
+    const nid = +id;
+    // Bypass getIconUrl: it always returns a truthy local-path string even when
+    // the file isn't downloaded, suppressing the CDN fallback we need here.
+    const url = iconCache.get(nid) || `${CDN_ROOT}${_cdnVersion||'v466'}/icons/icon_${nid}.png`;
     return `<img src="${url}" width="${sz}" height="${sz}" style="vertical-align:middle;margin-right:1px;image-rendering:pixelated;border-radius:2px">`;
   });
 }
+// Convert CamelCase skill name to display form: "SpiritFox" → "Spirit Fox"
+function _skillDisplayName(s) {
+  return s.replace(/([A-Z])/g, ' $1').trim();
+}
+
+// Return true if any inventory item with the same Name has a TSysPower whose skill
+// matches the normalised query string `qNorm` (lowercase, spaces stripped).
+// Matches by Name (the aggregation key used by processInventory) rather than TypeID,
+// because multiple differently-enchanted items can share a TypeID while having
+// different displayed names — matching on TypeID would cause false positives.
+/** Parse a storage search query into structured filters.
+ *
+ *  Tokens are split by whitespace.  Each token is classified as:
+ *    lvl<op><n>  – level-requirement filter  (op: >, >=, <, <=, or exact)
+ *    anything else – potential skill name token AND/OR name fragment
+ *
+ *  Returns { skillTokens, nameQ, levelFilter }
+ *    skillTokens  – normalised (lowercase, no spaces) list; ALL must match
+ *    nameQ        – the non-lvl tokens joined back for name substring check
+ *    levelFilter  – predicate (level:number)=>bool, or null
+ */
+function _parseStorageQ(rawQ) {
+  const tokens     = rawQ.split(/\s+/).filter(Boolean);
+  const otherToks  = [];
+  let   levelFilter = null;
+
+  for (const tok of tokens) {
+    const m = tok.match(/^lvl([<>]=?)?(\d+)$/i);
+    if (m) {
+      const op = m[1] || '=';
+      const n  = parseInt(m[2], 10);
+      levelFilter = op === '>=' ? v => v >= n
+                  : op === '>'  ? v => v >  n
+                  : op === '<=' ? v => v <= n
+                  : op === '<'  ? v => v <  n
+                  :               v => v === n;
+    } else {
+      otherToks.push(tok);
+    }
+  }
+
+  return {
+    skillTokens: otherToks.map(t => t.replace(/\s+/g, '')), // normalised for skill lookup
+    nameQ:       otherToks.join(' '),                        // for name substring check
+    levelFilter,
+  };
+}
+
+/** Return the level requirement of an inventory item by name, or null. */
+function _getItemLevel(itemName, invItems) {
+  for (const it of invItems) {
+    if ((it.Name || 'Unknown') === itemName && it.Level) return it.Level;
+  }
+  return null;
+}
+
+/** Return true if the item (looked up by name in invItems) has ALL of the
+ *  requested skill tokens in its TSysPowers.  Each token is a normalised
+ *  (lowercase, no-space) substring; partial matches are accepted so that
+ *  e.g. "fox" matches "SpiritFox". */
+function _itemMatchesAllSkills(itemName, invItems, skillTokens) {
+  if (!skillTokens.length || !Object.keys(TSYS_SKILLS).length) return false;
+  for (const it of invItems) {
+    if ((it.Name || 'Unknown') !== itemName) continue;
+    const skills = (it.TSysPowers || [])
+      .map(p => TSYS_SKILLS[p.Power]?.toLowerCase().replace(/\s+/g, ''))
+      .filter(Boolean);
+    if (skillTokens.every(tok => skills.some(sk => sk.includes(tok)))) return true;
+  }
+  return false;
+}
+
 // Shared helper: builds rarity/level/slot/powers HTML for an inventory item object.
 // Used by sgShowTooltip and showItemTooltip.
 // Pass showValue=true to include the coin value line between level and powers (used by sgShowTooltip).
@@ -2046,6 +2349,8 @@ function _buildEquipHtml(item, showValue) {
   const rarityColor = rarityColors[rarity] || '';
   const typeId = String(item.TypeID);
   const category = (typeof sgItemCategory === 'function') ? sgItemCategory(typeId) : '';
+  // Collect skills from this item's TSysPowers (e.g. "Mentalism", "IceMagic")
+  const powerSkills = [...new Set((item.TSysPowers || []).map(p => TSYS_SKILLS[p.Power]).filter(Boolean))];
   const powers = (item.TSysPowers || []).map(p => {
     const tierMap = TSYS && TSYS[p.Power];
     if (tierMap) {
@@ -2062,9 +2367,13 @@ function _buildEquipHtml(item, showValue) {
     }
     return `<div style="font-size:11px;color:var(--text-dim);margin-top:3px">• ${p.Power} <span style="color:var(--gold-dim)">T${p.Tier}</span></div>`;
   }).join('');
+  const skillsHtml = powerSkills.length
+    ? `<div style="font-size:10px;color:var(--text-dim);margin-bottom:3px;opacity:.75">${powerSkills.map(_skillDisplayName).join(' · ')}</div>`
+    : '';
   return [
     rarity ? `<div style="font-size:11px;color:${rarityColor};margin-bottom:4px">${rarity}${item.Slot ? ` · ${item.Slot}` : ''}${category ? ` · ${category}` : ''}</div>` : '',
     item.Level ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Level ${item.Level}</div>` : '',
+    skillsHtml,
     (showValue && item.Value) ? `<div style="font-size:11px;color:var(--gold-dim);margin-bottom:4px">${item.Value.toLocaleString()} 🪙</div>` : '',
     powers ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">${powers}</div>` : '',
   ].join('');
@@ -2287,7 +2596,9 @@ function renderSellGiftTab() {
   } else if (sellGiftSelected) {
     const it = sellGiftSelected;
     const tid = String(it.TypeID);
-    const keywords = ITEMS[tid]?.[4] || [];
+    const _baseKws2 = ITEMS[tid]?.[4] || [];
+    const _tsysPrereqs2 = (it.TSysPowers || []).map(p => TSYS_SKILLS[p.Power]).filter(Boolean).map(sk => 'SkillPrereq:' + sk);
+    const keywords = _tsysPrereqs2.length ? [...new Set([..._baseKws2, ..._tsysPrereqs2])] : _baseKws2;
     const rarity = it.Rarity || '';
     const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
     const rarityColor  = rarityColors[rarity] || 'var(--text)';
@@ -2403,9 +2714,118 @@ function renderStorageTab() {
   rerenderRight();
 }
 
+// ═══════════════════════════════════════════════════════════
+// XP TRACKER — rolling 1-hour window
+// ═══════════════════════════════════════════════════════════
+function _xpPruneOld() {
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000; // keep 2h buffer
+  if (xpEvents.length > 0 && xpEvents[0].ts < cutoff)
+    xpEvents = xpEvents.filter(e => e.ts >= cutoff);
+}
+
+function getXpLastHour() {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  const totals = {};
+  for (const e of xpEvents) {
+    if (e.ts >= cutoff) totals[e.skill] = (totals[e.skill] || 0) + e.xp;
+  }
+  return totals;
+}
+
+/** Project current XP/hour from the last `windowMin` minutes of events.
+ *  Returns {skill: projected_xp_per_hour} or {} if not enough data. */
+function getXpProjected(windowMin = 15) {
+  const now     = Date.now();
+  const cutoff  = now - windowMin * 60 * 1000;
+  const totals  = {};
+  let earliest  = now;
+  for (const e of xpEvents) {
+    if (e.ts >= cutoff) {
+      totals[e.skill] = (totals[e.skill] || 0) + e.xp;
+      if (e.ts < earliest) earliest = e.ts;
+    }
+  }
+  const elapsedMs = now - earliest;
+  if (elapsedMs < 30_000) return {}; // need at least 30 s of data
+  const scale = 3_600_000 / elapsedMs; // multiply to reach 1 hour
+  const result = {};
+  for (const [skill, xp] of Object.entries(totals)) result[skill] = Math.round(xp * scale);
+  return result;
+}
+
+/** Compact formatter: 1 234 → "1.2k", 18 700 → "18.7k", 125 000 → "125k" */
+function _fmtK(n) {
+  if (n < 1000) return n.toString();
+  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return Math.round(n / 1000) + 'k';
+}
+
+function _saveXpEvents() {
+  try { localStorage.setItem('pgXpEvents', JSON.stringify(xpEvents)); } catch(e) {}
+}
+
+function _loadXpEvents() {
+  try {
+    const raw = localStorage.getItem('pgXpEvents');
+    if (raw) { xpEvents = JSON.parse(raw); _xpPruneOld(); }
+  } catch(e) {}
+}
+
+function toggleXpTracker() {
+  xpTrackerExpanded = !xpTrackerExpanded;
+  localStorage.setItem('pgXpTrackerExpanded', xpTrackerExpanded ? '1' : '0');
+  const char = characters.find(c => c.id === activeCharId);
+  if (char && mainTab === 'storage') renderLeft(char);
+}
+
+function renderXpTrackerSection() {
+  const hourXp   = getXpLastHour();
+  const projXp   = getXpProjected();       // last-15-min pace extrapolated to 1 h
+  const entries  = Object.entries(hourXp).sort((a, b) => b[1] - a[1]);
+  const hasProj  = Object.values(projXp).some(v => v > 0);
+
+  let bodyHtml = '';
+  if (xpTrackerExpanded) {
+    if (entries.length === 0) {
+      bodyHtml = `<div style="font-size:12px;color:var(--text-dim);padding:5px 0 2px;font-style:italic">No XP tracked yet — keep playing!</div>`;
+    } else {
+      const maxXp = entries[0][1];
+      const rows = entries.map(([skill, xp]) => {
+        const pct  = Math.round((xp / maxXp) * 100);
+        const name = skill.replace(/([A-Z])/g, ' $1').trim();
+        const proj = projXp[skill];
+        // Projected column — show even when equal so the grid stays aligned
+        const projCell = hasProj
+          ? `<span style="font-size:11px;color:var(--text-dim);font-family:'Crimson Pro',serif;min-width:52px;text-align:right;white-space:nowrap">
+               ${_fmtK(proj ?? 0)}/h
+             </span>`
+          : '';
+        return `<div class="pinned-skill-row">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:4px">
+              <span class="pinned-skill-name" style="flex:1">${name}</span>
+              <span style="font-size:12px;color:var(--gold-light);font-family:'Crimson Pro',serif;min-width:52px;text-align:right;white-space:nowrap">+${xp.toLocaleString()}</span>
+              ${projCell}
+            </div>
+            <div class="pinned-xp-wrap"><div class="pinned-xp" style="width:${pct}%"></div></div>
+          </div>
+        </div>`;
+      }).join('');
+      bodyHtml = rows;
+    }
+  }
+
+  return `<div class="panel-section">
+    <div class="panel-label" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleXpTracker()">
+      <span>XP/Hour</span>
+      <span style="font-size:9px;opacity:.7">${xpTrackerExpanded ? '▲' : '▼'}</span>
+    </div>
+    ${xpTrackerExpanded ? `<div>${bodyHtml}</div>` : ''}
+  </div>`;
+}
+
 function renderLeft(char) {
-  const cd = char.charData, stats = cd.CurrentStats||{}, currencies = cd.Currencies||{};
-  const hp=stats.MAX_HEALTH||0, armor=stats.MAX_ARMOR||0, power=stats.MAX_POWER||0, mx=Math.max(hp,armor,power,1);
+  const cd = char.charData, currencies = cd.Currencies||{};
   const curKeys = Object.entries(currencies).filter(([k,v])=>v>0 && k !== 'REDWINGTOKENS');
 
   // ── Pinned skills ──
@@ -2451,12 +2871,8 @@ function renderLeft(char) {
 
   document.getElementById('leftPanel').innerHTML = `
     <div class="panel-section"><div class="char-card"><div class="char-avatar">${cd.Character[0]}</div><div class="char-info"><h2>${cd.Character}</h2><div class="meta">${cd.Race} · ${cd.ServerName}</div><div class="meta" style="font-size:10px;margin-top:1px">${cd.Timestamp?.slice(0,10)||''}</div></div></div></div>
-    <div class="panel-section"><div class="panel-label">Vitals</div><div class="vitals">
-      <div class="vital-row"><span class="vital-label" style="color:var(--red)">Health</span><div class="vital-bar-wrap"><div class="vital-bar health" style="width:${hp/mx*100}%"></div></div><span class="vital-val">${hp}</span></div>
-      <div class="vital-row"><span class="vital-label" style="color:var(--blue)">Armor</span><div class="vital-bar-wrap"><div class="vital-bar armor" style="width:${armor/mx*100}%"></div></div><span class="vital-val">${armor}</span></div>
-      <div class="vital-row"><span class="vital-label" style="color:var(--purple)">Power</span><div class="vital-bar-wrap"><div class="vital-bar power" style="width:${power/mx*100}%"></div></div><span class="vital-val">${power}</span></div>
-    </div></div>
     ${curKeys.length?`<div class="panel-section"><div class="panel-label">Currencies</div><div class="currencies">${curKeys.map(([k,v])=>`<div class="currency-chip"><span class="cur-name">${k.replace(/_/g,' ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase())}</span><span class="cur-val">${v.toLocaleString()}</span></div>`).join('')}</div></div>`:''}
+    ${renderXpTrackerSection()}
     ${pinnedHtml}
     <div class="panel-section"><div class="panel-label">Top Skills</div><div class="skill-list">${skillsHtml}</div>
       <button class="edit-pins-btn" style="margin-top:10px" onclick="openSkillPicker('${char.id}')">⭐ Pin Skills</button>
@@ -2482,9 +2898,112 @@ function renderModeToggle() {
     <button class="mode-btn ${searchMode==='all'?'active':''}" onclick="setSearchMode('all')">All Characters</button>
   </div>`;
 }
-function setSearchMode(m) { searchMode=m; activeVaultFilter=null; activeTownFilter=''; rerenderRight(); }
-function clearSearch() { searchQuery=''; rerenderRight(); }
+function setSearchMode(m) { searchMode=m; activeVaultFilter=null; activeTownFilter=''; storageKeyFilter=''; rerenderRight(); }
+function clearSearch() { searchQuery=''; storageKeyFilter=''; rerenderRight(); }
 function onSearch(v) { searchQuery=v; rerenderRight(); }
+
+// ── Keyword filter helpers ────────────────────────────────────────────────────
+function fmtKeyword(raw) {
+  // Strip numeric suffix e.g. "MeatDish=390" -> "MeatDish"
+  const e = raw.indexOf('='); if (e > 0) raw = raw.slice(0, e);
+  // CamelCase → "Camel Case"
+  return raw.replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+}
+
+function _buildStorageKeyList(allItems) {
+  const kwMap = new Map(); // raw -> label
+  for (const item of allItems) {
+    const kws = ITEMS[String(item.typeId)]?.[4] || [];
+    for (const kw of kws) {
+      const e = kw.indexOf('='); const raw = e > 0 ? kw.slice(0, e) : kw;
+      if (raw && !kwMap.has(raw)) kwMap.set(raw, fmtKeyword(raw));
+    }
+  }
+  _storageKeyList = [...kwMap.entries()].map(([raw, label]) => ({ raw, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function _buildStorageKeyListHtml() {
+  const q = storageKeySearch.toLowerCase();
+  const list = q ? _storageKeyList.filter(k => k.label.toLowerCase().includes(q)) : _storageKeyList;
+  if (!list.length) return '<div class="kw-dd-item" style="color:var(--text-dim);cursor:default">No keywords found</div>';
+  return list.map(k =>
+    `<div class="kw-dd-item${k.raw === storageKeyFilter ? ' kw-selected' : ''}"
+      onmousedown="event.preventDefault();_sgKwSelect('${k.raw.replace(/'/g,"\\'")}')">
+      ${k.label}</div>`
+  ).join('');
+}
+
+function _renderKwDropdown() {
+  const hasVal = storageKeyFilter !== '';
+  const inputVal = storageKeyOpen
+    ? storageKeySearch.replace(/"/g, '&quot;')
+    : (hasVal ? fmtKeyword(storageKeyFilter).replace(/"/g, '&quot;') : '');
+  const clearBtn = hasVal
+    ? `<button class="kw-dd-clear" title="Clear keyword filter" onmousedown="event.preventDefault();event.stopPropagation();_sgKwClear()">✕</button>`
+    : '';
+  const list = storageKeyOpen
+    ? `<div class="kw-dd-list" id="storageKwList">${_buildStorageKeyListHtml()}</div>`
+    : '';
+  return `<div class="kw-dd-wrap" id="storageKwWrap">
+    ${clearBtn}
+    <input class="kw-dd-input${hasVal ? ' has-value' : ''}" id="storageKwInput" type="text"
+      placeholder="Filter by keyword…"
+      value="${inputVal}"
+      onfocus="_sgKwFocus()"
+      oninput="_sgKwSearch(this.value)"
+      onblur="_sgKwBlur()">
+    <span class="kw-dd-arrow">▾</span>
+    ${list}
+  </div>`;
+}
+
+function _sgKwFocus() {
+  if (storageKeyOpen) return;
+  storageKeyOpen = true;
+  storageKeySearch = '';
+  rerenderRight();
+  requestAnimationFrame(() => {
+    if (storageKeyOpen) { const el = document.getElementById('storageKwInput'); if (el) el.focus(); }
+  });
+}
+function _sgKwBlur() { /* handled by click-outside */ }
+function _sgKwSearch(v) {
+  storageKeySearch = v;
+  const listEl = document.getElementById('storageKwList');
+  if (listEl) { listEl.innerHTML = _buildStorageKeyListHtml(); return; }
+  storageKeyOpen = true;
+  rerenderRight();
+  requestAnimationFrame(() => {
+    if (storageKeyOpen) { const el = document.getElementById('storageKwInput'); if (el) { el.focus(); el.value = v; } }
+  });
+}
+function _sgKwSelect(raw) {
+  storageKeyFilter = raw === storageKeyFilter ? '' : raw; // toggle off if same
+  storageKeyOpen = false;
+  storageKeySearch = '';
+  rerenderRight();
+}
+function _sgKwClear() {
+  storageKeyFilter = '';
+  storageKeyOpen = false;
+  storageKeySearch = '';
+  rerenderRight();
+}
+function _sgKwEnsureClickOutside() {
+  if (_storageKeyClickListenerAdded) return;
+  _storageKeyClickListenerAdded = true;
+  document.addEventListener('click', e => {
+    if (mainTab !== 'storage') return;
+    if (!storageKeyOpen) return;
+    if (!e.target.closest('#storageKwWrap')) {
+      storageKeyOpen = false;
+      if (!storageKeyFilter) storageKeySearch = '';
+      rerenderRight();
+    }
+  });
+}
 function toggleVaultFilter(v) { activeVaultFilter = activeVaultFilter===v?null:v; rerenderRight(); }
 function toggleConsolidate() { showConsolidateOnly=!showConsolidateOnly; rerenderRight(); }
 function toggleTownFilter(town) {
@@ -2560,12 +3079,15 @@ function renderItemRow(name, vaults, total, typeId, value, query, charLabel, con
   const safeVal = value || 0;
   const iconId = typeId ? ITEMS_ICONS[String(typeId)] : null;
   const iconUrl = iconId ? getIconUrl(iconId) : null;
-  const iconHtml = iconUrl ? `<img class="item-icon" src="${iconUrl}" alt="">` : '';
+  const hasNote = !!getItemNote(name);
+  const isStarred = pinnedItemsCache.has(name);
+  const iconHtml = iconUrl ? `<img class="item-icon${hasNote?' has-note':''}" src="${iconUrl}" alt="">` : '';
+  const starBtn = `<span class="item-star-btn${isStarred?' starred':''}" title="${isStarred?'Remove from favourites':'Add to favourites'}" onclick="event.stopPropagation();togglePinnedItem('${safeN}')">★</span>`;
   return `<tr class="item-row${consInfo?' needs-consolidation':''}"
-    oncontextmenu="openStackPopup('${safeN}',${safeTid},event)"
+    oncontextmenu="openItemNotePopup('${safeN}',event)"
     onmouseenter="showItemTooltip('${safeN}',${safeTid||0},${safeVal},event)"
     onmouseleave="hideTooltip()">
-    <td><div style="display:flex;align-items:center">${iconHtml}<div><span class="item-name">${nameHtml}</span>${warn}</div></div></td>
+    <td><div style="display:flex;align-items:center">${iconHtml}<div><span class="item-name">${nameHtml}</span>${warn}</div>${starBtn}</div></td>
     ${charHtml}
     <td><div class="vault-chips">${chips}</div></td>
     <td><span class="total-badge ${total<2?'small':''}">${total}</span></td>
@@ -2612,14 +3134,30 @@ function cycleStorageSort(col) {
 }
 function renderRight(char) {
   const q = searchQuery.toLowerCase().trim();
+  const { skillTokens, nameQ, levelFilter } = _parseStorageQ(q);
   const allVaults = [...new Set(char.items.flatMap(i=>Object.keys(i.vaults)))]
     .sort((a,b)=>a==='Inventory'?-1:b==='Inventory'?1:a.localeCompare(b));
+  // Build keyword list from this character's full inventory (before any filtering)
+  _buildStorageKeyList(char.items);
   // Build set of vaults in the active town for filtering
   const townVaultSet = activeTownFilter
     ? new Set(allVaults.filter(v => getVaultTown(v) === activeTownFilter))
     : null;
+  const charInvItems = char.invData?.Items || [];
   let items = char.items;
-  if (q) items = items.filter(i=>i.name.toLowerCase().includes(q));
+  if (q) items = items.filter(i => {
+    // Level-requirement filter (AND with everything else)
+    if (levelFilter && !levelFilter(_getItemLevel(i.name, charInvItems) ?? 0)) return false;
+    // If query had only lvl tokens, level check is all we need
+    if (!nameQ) return true;
+    // Name substring OR skill match (all skill tokens must be present)
+    if (i.name.toLowerCase().includes(nameQ)) return true;
+    return _itemMatchesAllSkills(i.name, charInvItems, skillTokens);
+  });
+  if (storageKeyFilter) items = items.filter(i => {
+    const kws = ITEMS[String(i.typeId)]?.[4] || [];
+    return kws.some(k => { const e = k.indexOf('='); return (e > 0 ? k.slice(0, e) : k) === storageKeyFilter; });
+  });
   if (townVaultSet) items = items.filter(i=>Object.keys(i.vaults).some(v=>townVaultSet.has(v)));
   if (activeVaultFilter) items = items.filter(i=>i.vaults[activeVaultFilter]!==undefined);
   if (showConsolidateOnly) items = items.filter(i=>getConsolidationInfo(i.name,i.vaults,i.typeId));
@@ -2641,9 +3179,17 @@ function renderRight(char) {
   } else if (storageSortDir === 'desc') { // name desc
     itemsWithFt.sort((a, b) => b.i.name.localeCompare(a.i.name));
   }
-  const rows = itemsWithFt.map(({ i, fv, ft }) =>
-    renderItemRow(i.name, fv, ft, i.typeId, i.value, q, null, getConsolidationInfo(i.name, i.vaults, i.typeId))
-  ).join('');
+  const _makeRow = ({ i, fv, ft }) =>
+    renderItemRow(i.name, fv, ft, i.typeId, i.value, q, null, getConsolidationInfo(i.name, i.vaults, i.typeId));
+  const starredRows  = itemsWithFt.filter(({ i }) => pinnedItemsCache.has(i.name));
+  const regularRows  = itemsWithFt.filter(({ i }) => !pinnedItemsCache.has(i.name));
+  const secHdr = label => `<tr class="storage-section-hdr"><td colspan="10">${label}</td></tr>`;
+  let rows = '';
+  if (starredRows.length > 0) {
+    rows += secHdr('⭐ Favourites') + starredRows.map(_makeRow).join('');
+    if (regularRows.length > 0) rows += secHdr('All Items');
+  }
+  rows += regularRows.map(_makeRow).join('');
   const totalValue = itemsWithFt.reduce((s, { i, fv }) =>
     s + (i.value || 0) * Object.values(fv).reduce((sum, n) => sum + n, 0), 0);
   const totalValueHtml = totalValue > 0
@@ -2664,6 +3210,7 @@ function renderRight(char) {
     </div>`;
   }
 
+  const kwLabel = storageKeyFilter ? ` · <span style="color:var(--gold-light)">${fmtKeyword(storageKeyFilter)}</span>` : '';
   document.getElementById('rightPanel').innerHTML = `
     <div class="search-wrap">
       ${renderModeToggle()}
@@ -2672,14 +3219,16 @@ function renderRight(char) {
         <input class="search-input" id="searchInput" type="text" placeholder="Search items…" value="${searchQuery.replace(/"/g,'&quot;')}" oninput="onSearch(this.value)">
         <span class="search-icon">⌕</span>
       </div>
+      ${_renderKwDropdown()}
     </div>
-    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${char.items.length}</span> items${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}${activeVaultFilter?` · <span style="color:${vc(activeVaultFilter).text}">${fvn(activeVaultFilter)}</span>`:''}</div></div>
+    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${char.items.length}</span> items${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}${activeVaultFilter?` · <span style="color:${vc(activeVaultFilter).text}">${fvn(activeVaultFilter)}</span>`:''}${kwLabel}</div></div>
     ${renderTownFilters(allVaults)}
     ${renderVaultFilters(allVaults)}
     ${totalValueHtml}${slotInfoHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
     :`<table class="inv-table"><thead><tr>${storageThHtml(['name','location','total'])}</tr></thead><tbody>${rows}</tbody></table>`}`;
   restoreFocus(q);
+  _sgKwEnsureClickOutside();
 }
 
 function buildMergedAllItems() {
@@ -2698,7 +3247,10 @@ function buildMergedAllItems() {
 
 function renderRightAll() {
   const q = searchQuery.toLowerCase().trim();
+  const { skillTokens, nameQ, levelFilter } = _parseStorageQ(q);
   const merged = buildMergedAllItems();
+  // Build keyword list from all characters' items (before any filtering)
+  _buildStorageKeyList(merged);
   // All vaults that appear across all characters (for town filter)
   const allVaultsAll = [...new Set(characters.flatMap(c => c.items.flatMap(i => Object.keys(i.vaults))))]
     .sort((a,b)=>a==='Inventory'?-1:b==='Inventory'?1:a.localeCompare(b));
@@ -2706,7 +3258,20 @@ function renderRightAll() {
     ? new Set(allVaultsAll.filter(v => getVaultTown(v) === activeTownFilter))
     : null;
   let items = merged;
-  if (q) items = items.filter(i=>i.name.toLowerCase().includes(q));
+  if (q) items = items.filter(i => {
+    // Level-requirement filter — find the level from any character that has the item
+    if (levelFilter) {
+      const lv = characters.reduce((found, c) => found ?? _getItemLevel(i.name, c.invData?.Items || []), null);
+      if (!levelFilter(lv ?? 0)) return false;
+    }
+    if (!nameQ) return true;
+    if (i.name.toLowerCase().includes(nameQ)) return true;
+    return characters.some(c => _itemMatchesAllSkills(i.name, c.invData?.Items || [], skillTokens));
+  });
+  if (storageKeyFilter) items = items.filter(i => {
+    const kws = ITEMS[String(i.typeId)]?.[4] || [];
+    return kws.some(k => { const e = k.indexOf('='); return (e > 0 ? k.slice(0, e) : k) === storageKeyFilter; });
+  });
   if (townVaultSet) items = items.filter(i=>Object.values(i.byChar).some(cd=>Object.keys(cd.vaults).some(v=>townVaultSet.has(v))));
   if (showConsolidateOnly) items = items.filter(i=>Object.values(i.byChar).some(cd=>getConsolidationInfo(i.name,cd.vaults,i.typeId)));
   // Compute per-item filtered total for sorting
@@ -2732,22 +3297,30 @@ function renderRightAll() {
   } else if (storageSortDir === 'desc') { // name desc
     items = [...items].sort((a, b) => b.name.localeCompare(a.name));
   }
-  const rows = items.flatMap(item => {
-    // In town-filter mode, only show the char rows that have items in that town
+  const _buildAllRows = itemArr => itemArr.flatMap(item => {
     const charEntries = townVaultSet
       ? Object.values(item.byChar).filter(cd => Object.keys(cd.vaults).some(v => townVaultSet.has(v)))
       : Object.values(item.byChar);
     return charEntries.map(cd => {
-      // Restrict vault chips and total to the filtered town's vaults only
       const fv = townVaultSet ? Object.fromEntries(Object.entries(cd.vaults).filter(([v]) => townVaultSet.has(v))) : cd.vaults;
       const ft = Object.values(fv).reduce((s, n) => s + n, 0);
       return renderItemRow(item.name, fv, ft, item.typeId, item.value, q, cd.charName, getConsolidationInfo(item.name, cd.vaults, item.typeId));
     });
   }).join('');
+  const starredAll  = items.filter(item => pinnedItemsCache.has(item.name));
+  const regularAll  = items.filter(item => !pinnedItemsCache.has(item.name));
+  const secHdrAll = label => `<tr class="storage-section-hdr"><td colspan="10">${label}</td></tr>`;
+  let rows = '';
+  if (starredAll.length > 0) {
+    rows += secHdrAll('⭐ Favourites') + _buildAllRows(starredAll);
+    if (regularAll.length > 0) rows += secHdrAll('All Items');
+  }
+  rows += _buildAllRows(regularAll);
   const totalValue = items.reduce((s, i) => s + (i.value || 0) * getItemFilteredTotal(i), 0);
   const totalValueHtml = totalValue > 0
     ? `<div style="margin-bottom:10px;font-size:12px;color:var(--text-dim)">Total value: <span style="color:var(--gold-light);font-family:'Cinzel',serif">🪙 ${totalValue.toLocaleString()}</span></div>`
     : '';
+  const kwLabelAll = storageKeyFilter ? ` · <span style="color:var(--gold-light)">${fmtKeyword(storageKeyFilter)}</span>` : '';
   document.getElementById('rightPanel').innerHTML = `
     <div class="search-wrap">
       ${renderModeToggle()}
@@ -2756,14 +3329,16 @@ function renderRightAll() {
         <input class="search-input" id="searchInput" type="text" placeholder="Search all characters…" value="${searchQuery.replace(/"/g,'&quot;')}" oninput="onSearch(this.value)">
         <span class="search-icon">⌕</span>
       </div>
+      ${_renderKwDropdown()}
     </div>
-    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${merged.length}</span> unique items across <span>${characters.length}</span> characters${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}</div></div>
+    <div class="search-meta"><div class="search-count">Showing <span>${items.length}</span> of <span>${merged.length}</span> unique items across <span>${characters.length}</span> characters${activeTownFilter?` · <span style="color:var(--gold-light)">${activeTownFilter}</span>`:''}${kwLabelAll}</div></div>
     ${renderTownFilters(allVaultsAll)}
     ${renderVaultFilters([])}
     ${totalValueHtml}
     ${items.length===0?`<div class="empty-state"><div class="icon">⚗</div><h3>No items found</h3></div>`
     :`<table class="inv-table"><thead><tr>${storageThHtml(['name','character','location','total'])}</tr></thead><tbody>${rows}</tbody></table>`}`;
   restoreFocus(q);
+  _sgKwEnsureClickOutside();
 }
 
 function restoreFocus(q) { const i=document.getElementById('searchInput');i?.focus();i?.setSelectionRange(i.value.length,i.value.length); }
@@ -2771,7 +3346,7 @@ function toggleNavMenu() { document.getElementById('main-nav')?.classList.toggle
 function updateHeaderChar() {
   const el = document.getElementById('headerChar');
   if (!el) return;
-  const logOk = playerLogWatchActive || wsBridgeConnected;
+  const logOk = playerLogWatchActive || wsBridgeConnected || surveyConnected;
   const warn = !logOk ? `<span class="log-warn" title="Player log not connected — favor data may be stale" style="margin-left:4px">!</span>` : '';
   if (currentLogChar) {
     el.innerHTML = currentLogChar + warn;
@@ -2791,18 +3366,40 @@ let tooltipTimer = null;
 function showItemTooltip(itemName, typeId, itemValue, e) {
   hideTooltip();
   tooltipTimer = setTimeout(() => {
-    // Look up raw inventory item for equipment stats (rarity, level, powers)
+    // Look up raw inventory item for equipment stats (rarity, level, powers).
+    // When a skill search is active, prefer the instance that actually matches the
+    // query so the tooltip reflects why the item appeared in results.
     let eqItem = null;
     if (typeId) {
-      const tid = String(typeId);
       const searchChars = (activeCharId && activeCharId !== '__all__' && activeCharId !== '__sellgift__')
         ? characters.filter(c => c.id === activeCharId)
         : characters;
+      const qNorm = searchQuery.toLowerCase().trim().replace(/\s+/g, '');
+      const skillSearch = qNorm && Object.keys(TSYS_SKILLS).length;
       for (const c of searchChars) {
-        const found = (c.invData?.Items || []).find(it => String(it.TypeID) === tid);
-        if (found && (found.Rarity || found.TSysPowers?.length || found.Level)) { eqItem = found; break; }
+        const invItems = c.invData?.Items || [];
+        // Prefer an instance that matches the skill search query
+        if (skillSearch) {
+          const skillMatch = invItems.find(it =>
+            (it.Name || 'Unknown') === itemName &&
+            (it.TSysPowers || []).some(p => {
+              const sk = TSYS_SKILLS[p.Power];
+              return sk && sk.toLowerCase().includes(qNorm);
+            })
+          );
+          if (skillMatch) { eqItem = skillMatch; break; }
+        }
+        // Fallback: first instance with this name that has meaningful stats
+        const found = invItems.find(it => (it.Name || 'Unknown') === itemName &&
+          (it.Rarity || it.TSysPowers?.length || it.Level));
+        if (found) { eqItem = found; break; }
       }
     }
+
+    // Description and skill requirements from CDN items data
+    const iData = typeId ? ITEMS[String(typeId)] : null;
+    const description = iData?.[5] || '';
+    const skillReqs   = iData?.[6] || null;
 
     const recipes = getRecipesForItem(typeId);
     const maxStack = getMaxStack(itemName, typeId);
@@ -2814,7 +3411,7 @@ function showItemTooltip(itemName, typeId, itemValue, e) {
     const valuePerItem = itemValue || 0;
     const totalValue = valuePerItem * totalQty;
 
-    if (!eqItem && !recipes.length && !maxStack && !valuePerItem && !dataLoaded.sources_items) return;
+    if (!eqItem && !recipes.length && !maxStack && !valuePerItem && !dataLoaded.sources_items && !description && !skillReqs) return;
 
     const eqHtml = eqItem ? _buildEquipHtml(eqItem) : '';
 
@@ -2838,15 +3435,46 @@ function showItemTooltip(itemName, typeId, itemValue, e) {
     const footerLine = [stackPart, valuePart].filter(Boolean).join('&ensp;·&ensp;');
     const stackHtml = footerLine ? `<div class="tooltip-stack">${footerLine}</div>` : '';
 
-    if (!eqHtml && !recipesHtml && !stackHtml && !sourcesHtml) return;
+    if (!eqHtml && !recipesHtml && !stackHtml && !sourcesHtml && !description && !skillReqs) return;
 
     const rarityColors = { Legendary:'#dcc83c', Epic:'#e040e0', Exceptional:'#d03030', Rare:'#00d8d8', Uncommon:'#30d030' };
-    const titleColor = eqItem?.Rarity ? (rarityColors[eqItem.Rarity] || 'var(--text)') : 'var(--text)';
+    const titleColor = eqItem?.Rarity ? (rarityColors[eqItem.Rarity] || 'var(--gold-light)') : 'var(--gold-light)';
+
+    // Header: icon + name
+    const iconId  = typeId ? ITEMS_ICONS[String(typeId)] : null;
+    const iconUrl = iconId ? getIconUrl(iconId) : null;
+    const iconHdr = iconUrl
+      ? `<img src="${iconUrl}" style="width:38px;height:38px;image-rendering:pixelated;border-radius:4px;flex-shrink:0">`
+      : '';
+    const headerHtml = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;padding-bottom:9px;border-bottom:1px solid var(--border)">
+      ${iconHdr}
+      <div style="font-family:'Cinzel',serif;font-size:13px;color:${titleColor};line-height:1.3">${itemName}</div>
+    </div>`;
+
+    const descHtml = description
+      ? `<div class="tooltip-desc">${description}</div>`
+      : '';
+
+    const skillReqHtml = skillReqs
+      ? `<div class="tooltip-skillreq">${
+          Object.entries(skillReqs)
+            .map(([sk, lv]) => `Requires ${sk.replace(/([A-Z])/g,' $1').trim()} Level ${lv}`)
+            .join('<br>')
+        }</div>`
+      : '';
+    // Separate skill reqs from desc / eq block with a bit of spacing
+    const skillReqBlock = skillReqHtml
+      ? `<div style="margin-bottom:${eqHtml||recipesHtml||sourcesHtml||stackHtml?'8':'0'}px">${skillReqHtml}</div>`
+      : '';
+
+    // Per-item note (if any) shown at the bottom
+    const noteText = getItemNote(itemName);
+    const noteHtml = noteText ? `<div class="tooltip-note">📝 ${noteText}</div>` : '';
 
     const tip = document.createElement('div');
     tip.className = 'item-tooltip';
     tip.id = 'itemTooltip';
-    tip.innerHTML = `<div class="tooltip-title" style="color:${titleColor}">${itemName}</div>${eqHtml}${recipesHtml}${sourcesHtml}${stackHtml}`;
+    tip.innerHTML = `${headerHtml}${descHtml}${skillReqBlock}${eqHtml}${recipesHtml}${sourcesHtml}${stackHtml}${noteHtml}`;
     document.body.appendChild(tip);
     positionTooltip(tip, e);
   }, 350);
@@ -2860,10 +3488,9 @@ function getRecipesForItem(typeId) {
 // Render item source badges for a given typeId
 // Returns HTML string; empty string if no sources loaded or none found
 const ITEM_SOURCE_ICONS = {
-  Vendor:         { icon:'🛒', label:'Vendor',     cls:'vendor'  },
-  Barter:         { icon:'🔄', label:'Barter',     cls:'barter'  },
+  Vendor:         { icon:'',   label:'Vendor',     cls:'vendor',  prefix:'Purchasable' },
+  Barter:         { icon:'',   label:'Barter',     cls:'barter',  prefix:'Barter' },
   HangOut:        { icon:'🤝', label:'Hang Out',   cls:'hangout' },
-  NpcGift:        { icon:'🎁', label:'Gift',       cls:'gift'    },
   Monster:        { icon:'⚔', label:'Monster',    cls:'monster' },
   Angling:        { icon:'🎣', label:'Fishing',    cls:'skill'   },
   CorpseButchering:{ icon:'🔪', label:'Butchering', cls:'skill'  },
@@ -2886,18 +3513,26 @@ function toggleSourceExpand(key, typeId, maxEntries, e) {
 }
 
 function buildItemSourcesHtml(typeId, maxEntries, key, filteredSources) {
-  const sources = filteredSources || SOURCES_ITEMS[String(typeId)];
-  if (!sources || sources.length === 0) return '';
+  // NpcGift (item gifted by NPC) is not a useful "where to find" source — always exclude
+  const raw = (filteredSources || SOURCES_ITEMS[String(typeId)] || []).filter(s => s.t !== 'NpcGift');
+  if (raw.length === 0) return '';
   const expanded = expandedSources.has(key);
-  const shown = expanded ? sources : sources.slice(0, maxEntries);
+  const shown = expanded ? raw : raw.slice(0, maxEntries);
+  const prefixSeen = new Set(); // track which prefix labels have already been emitted
   const badges = shown.map(s => {
     const def = ITEM_SOURCE_ICONS[s.t] || { icon:'•', label: s.t, cls:'effect' };
-    const detail = s.n ? ` ${s.n}${s.a ? ` <span style="opacity:.65">(${s.a})</span>` : ''}` : '';
-    return `<span class="recipe-source ${def.cls}">${def.icon}${detail}</span>`;
+    const iconPart = def.icon ? `${def.icon} ` : '';
+    const detail = s.n ? `${s.n}${s.a ? ` <span style="opacity:.65">(${s.a})</span>` : ''}` : '';
+    const badge = `<span class="recipe-source ${def.cls}">${iconPart}${detail}</span>`;
+    if (def.prefix && !prefixSeen.has(def.prefix)) {
+      prefixSeen.add(def.prefix);
+      return `<span style="color:var(--gold-dim);font-size:11px">${def.prefix}:</span>${badge}`;
+    }
+    return badge;
   }).join('');
-  const overflow = sources.length - maxEntries;
+  const overflow = raw.length - maxEntries;
   let toggleBtn = '';
-  if (sources.length > maxEntries) {
+  if (raw.length > maxEntries) {
     if (expanded) {
       toggleBtn = `<button class="src-expand-btn" onclick="toggleSourceExpand('${key}',${typeId},${maxEntries},event)">▲ less</button>`;
     } else {
@@ -2932,25 +3567,54 @@ function hideTooltip() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// STACK SIZE POPUP (right-click)
+// ITEM NOTE POPUP (right-click on storage item)
 // ═══════════════════════════════════════════════════════════
 let popupItem = null;
-function openStackPopup(itemName, typeId, e) {
+function openItemNotePopup(itemName, e) {
   e.preventDefault();
   closePopup();
-  popupItem = { itemName, typeId };
-  const maxStack = getMaxStack(itemName, typeId);
+  popupItem = { itemName };
+  const currentNote = getItemNote(itemName);
+  const safeTitle = itemName.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const safeNote  = currentNote.replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const popup = document.createElement('div');
   popup.className = 'ctx-popup'; popup.id = 'ctxPopup';
+  popup.style.minWidth = '280px';
   popup.innerHTML = `
-    <h4>⚙ Stack Size — ${itemName}</h4>
-    <div class="popup-current">${maxStack ? `Max stack from data: <span>${maxStack}</span>` : '<span style="color:var(--text-dim)">No stack data found</span>'}</div>
-    ${maxStack && dataLoaded.items ? '<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Stack size is automatically loaded from pg_items.json</div>' : ''}
-    <div class="ctx-popup-btns"><button class="ctx-btn" onclick="closePopup()">Close</button></div>`;
-  const x=Math.min(e.clientX,window.innerWidth-330), y=Math.min(e.clientY,window.innerHeight-180);
+    <h4>📝 ${safeTitle}</h4>
+    <textarea id="itemNoteText" rows="4" placeholder="Add note."
+      style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:4px;
+      padding:8px 10px;font-family:'Crimson Pro',serif;font-size:13px;color:var(--text-bright);
+      outline:none;resize:vertical;line-height:1.5;transition:border-color .12s;display:block;margin-bottom:9px"
+      onfocus="this.style.borderColor='var(--gold-dim)'"
+      onblur="this.style.borderColor='var(--border)'"
+    >${safeNote}</textarea>
+    <div class="ctx-popup-btns">
+      ${currentNote ? `<button class="ctx-btn danger" onclick="clearItemNotePopup()">Clear</button>` : ''}
+      <button class="ctx-btn" onclick="closePopup()">Cancel</button>
+      <button class="ctx-btn primary" onclick="saveItemNotePopup()">Save</button>
+    </div>`;
+  const x=Math.min(e.clientX,window.innerWidth-310), y=Math.min(e.clientY,window.innerHeight-230);
   popup.style.left=x+'px'; popup.style.top=y+'px';
   document.body.appendChild(popup);
+  requestAnimationFrame(() => {
+    const ta = document.getElementById('itemNoteText');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  });
   setTimeout(()=>document.addEventListener('click',outsidePopupClick),10);
+}
+async function saveItemNotePopup() {
+  if (!popupItem) return;
+  const text = document.getElementById('itemNoteText')?.value || '';
+  await saveItemNote(popupItem.itemName, text);
+  closePopup();
+  rerenderRight();
+}
+async function clearItemNotePopup() {
+  if (!popupItem) return;
+  await saveItemNote(popupItem.itemName, '');
+  closePopup();
+  rerenderRight();
 }
 
 // WO limit popup
@@ -2992,9 +3656,9 @@ function closePopup() { document.getElementById('ctxPopup')?.remove(); document.
 function renderWorkOrdersTab() {
   const showAll = activeCharId === '__all__';
   const chars = showAll ? characters : characters.filter(c=>c.id===activeCharId);
-  if (chars.length === 0) { document.getElementById('appContent').innerHTML='<div class="full-panel"><div class="empty-state"><div class="icon">📋</div><h3>No character loaded</h3></div></div>'; return; }
+  if (chars.length === 0) { document.getElementById('appContent').innerHTML=`<div class="full-panel">${_renderQuestsWOToggle()}<div class="empty-state"><div class="icon">📋</div><h3>No character loaded</h3></div></div>`; return; }
 
-  let html = '<div class="full-panel">';
+  let html = `<div class="full-panel">${_renderQuestsWOToggle()}`;
 
   // ── Active Work Orders ──
   const activeWOs = [];
@@ -3239,7 +3903,26 @@ function scrollNameToWOKey(scrollName) {
 const expandedAvailWOs = new Set();
 const expandedWOs = new Set();       // woKey_charId -> expanded active/completed WOs
 const expandedRecipes = new Set();   // recipe internalName -> expanded recipe rows
+const expandedRecipeIngs = new Set();// "recipeKey~ingId~subKey~..." → expanded sub-recipe ingredient
 const expandedFavorNpcs = new Set(); // npcKey -> expanded training panel
+
+// Lazy reverse map: resultTypeId (string) → [recipeKey, ...]
+// Built once from RECIPES on first use; cleared when recipe data reloads.
+let _recipeByResultId = null;
+function _getRecipeByResultId() {
+  if (_recipeByResultId) return _recipeByResultId;
+  _recipeByResultId = {};
+  for (const [key, r] of Object.entries(RECIPES)) {
+    const resultItems = r[3];
+    if (!resultItems?.length) continue;
+    for (const [tid] of resultItems) {
+      const k = String(tid);
+      if (!_recipeByResultId[k]) _recipeByResultId[k] = [];
+      _recipeByResultId[k].push(key);
+    }
+  }
+  return _recipeByResultId;
+}
 
 function toggleAvailWO(woKey) {
   if (expandedAvailWOs.has(woKey)) expandedAvailWOs.delete(woKey);
@@ -3298,7 +3981,7 @@ function filterAvailWOs() {
 function renderAvailableWOsTab() {
   const allChars = characters;
   if (allChars.length === 0) {
-    document.getElementById('appContent').innerHTML = '<div class="full-panel"><div class="empty-state"><div class="icon">📜</div><h3>No character loaded</h3></div></div>';
+    document.getElementById('appContent').innerHTML = `<div class="full-panel">${_renderQuestsWOToggle()}<div class="empty-state"><div class="icon">📜</div><h3>No character loaded</h3></div></div>`;
     return;
   }
 
@@ -3330,7 +4013,7 @@ function renderAvailableWOsTab() {
   _availWOEntries = entries;
 
   if (entries.length === 0) {
-    document.getElementById('appContent').innerHTML = `<div class="full-panel"><div class="empty-state"><div class="icon">📜</div><h3>No work order scrolls found</h3><p style="font-size:12px;margin-top:6px">Items named "Work Order for…" will appear here</p></div></div>`;
+    document.getElementById('appContent').innerHTML = `<div class="full-panel">${_renderQuestsWOToggle()}<div class="empty-state"><div class="icon">📜</div><h3>No work order scrolls found</h3><p style="font-size:12px;margin-top:6px">Items named "Work Order for…" will appear here</p></div></div>`;
     return;
   }
 
@@ -3348,7 +4031,7 @@ function renderAvailableWOsTab() {
     for (const entry of skillEntries) skillRows += renderAvailWOCard(entry);
   }
 
-  const html = `<div class="full-panel"><div class="wo-section">
+  const html = `<div class="full-panel">${_renderQuestsWOToggle()}<div class="wo-section">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="wo-section-title" style="margin:0">Available Work Order Scrolls <span id="availWOBadge" class="badge">${entries.length}</span></div>
       <div class="search-input-wrap" style="max-width:260px">
@@ -3489,6 +4172,15 @@ const FAVOR_COLORS = {
   SoulMates:  { bar:'rgba(192,80,80,.8)',   text:'#e07070',           bg:'rgba(192,80,80,.1)',     border:'rgba(192,80,80,.45)'   },
 };
 
+function cycleFavorSort(col) {
+  if (favorSortCol === col) {
+    favorSortDir = favorSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    favorSortCol = col;
+    favorSortDir = col === 'name' ? 'asc' : 'desc';
+  }
+  renderFavorsTab();
+}
 function setFavorAreaFilter(area) {
   favorAreaFilter = (favorAreaFilter === area) ? '' : area;
   // Area change must re-render the chips too — clear shell so full re-render runs
@@ -3749,8 +4441,19 @@ function _gardenSanitize() {
   }
 }
 
+// Reverse-lookup: find an NPC key by its display name.
+// Used to map chat-log "You gained X favor with Display Name" to a npcKey.
+function _npcKeyByName(displayName) {
+  if (!displayName || !NPCS) return null;
+  for (const [key, npc] of Object.entries(NPCS)) {
+    if (npc.name === displayName) return key;
+  }
+  return null;
+}
+
 function parsePlayerLogLines(lines) {
   let vendorCount = 0;
+  _parseLogCharChanged = false;
   // Prune stale pending-delete entries (drops, gifts, crafting decompositions)
   // These had no matching sale/storage event → remove from inventory display now
   const _pruneBefore = Date.now() - 5000;
@@ -3766,7 +4469,15 @@ function parsePlayerLogLines(lines) {
   for (const line of lines) {
     // Detect current player: ProcessAddPlayer(id, n, "AppearanceStr", "CharName", ...)
     let m = line.match(/ProcessAddPlayer\([^,]+,\s*[^,]+,\s*"[^"]*",\s*"([^"]+)"/);
-    if (m) { currentLogChar = m[1]; invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; _pendingNewItems[m[1]] = {}; _sgItemStash[m[1]] = {}; updateHeaderChar(); continue; }
+    if (m) {
+      if (currentLogChar !== m[1]) _parseLogCharChanged = true;
+      currentLogChar = m[1];
+      invInstanceMap[m[1]] = {}; _pendingDeletes[m[1]] = {}; _pendingNewItems[m[1]] = {}; _sgItemStash[m[1]] = {}; _sgVaultEntityMap[m[1]] = {};
+      // Clear stale entity-ID → NPC-key mappings from previous sessions so that
+      // ProcessVendorScreen lookups can't accidentally hit an old mapping.
+      if (playerLogData[m[1]]) playerLogData[m[1]].idMap = {};
+      updateHeaderChar(); continue;
+    }
 
     // Always track owned pet IDs regardless of char state — so thirsty events later
     // can be matched even if currentLogChar was empty when the seed was planted
@@ -3777,8 +4488,9 @@ function parsePlayerLogLines(lines) {
     if (!playerLogData[char]) playerLogData[char] = { npcs: {}, idMap: {} };
     const d = playerLogData[char];
 
-    // ProcessStartInteraction(id, ?, absoluteFavor, bool, "NPC_Name") — capture absolute favor
-    m = line.match(/ProcessStartInteraction\((\d+),\s*\d+,\s*([\d.-]+),\s*\w+,\s*"(NPC_\w+)"\)/);
+    // ProcessStartInteraction(id, ?, absoluteFavor, bool, "NPC_Name"[, ...]) — capture absolute favor
+    // No trailing \) so this matches even when the game emits extra parameters after the NPC key.
+    m = line.match(/ProcessStartInteraction\((\d+),\s*\d+,\s*([\d.-]+),\s*\w+,\s*"(NPC_\w+)"/);
     if (m) {
       const npcKey = m[3];
       d.idMap[m[1]] = npcKey;
@@ -3788,16 +4500,21 @@ function parsePlayerLogLines(lines) {
         const prev = d.npcs[npcKey].exactFavor;
         d.npcs[npcKey].exactFavor = absF;
         d.npcs[npcKey].loggedAt = Date.now();
+        const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
         if (prev !== absF) {
-          const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
           showToast(`↑ ${displayName} updated`);
         }
+        _wsLog(char, `${displayName}: favor ${absF}${prev != null && prev !== absF ? ` (was ${prev})` : ''}`);
         vendorCount++;
       }
       continue;
     }
     // ProcessDeltaFavor — only used for id→npcKey mapping
     m = line.match(/ProcessDeltaFavor\((\d+),\s*"(NPC_\w+)"/);
+    if (m) { d.idMap[m[1]] = m[2]; continue; }
+    // ProcessPromptForItem always ends with the NPC key — another idMap source
+    // e.g. ProcessPromptForItem(37906, "Give Gift", ..., "NPC_SammieGrimspine")
+    m = line.match(/ProcessPromptForItem\((\d+),.*"(NPC_\w+)"\)/);
     if (m) { d.idMap[m[1]] = m[2]; continue; }
     // Vendor data: ProcessVendorScreen(id, favorLevel, currentGold, resetAt, maxGold, ...)
     m = line.match(/ProcessVendorScreen\((\d+),\s*(\w+),\s*(\d+),\s*(\d+),\s*(\d+)/);
@@ -3806,12 +4523,23 @@ function parsePlayerLogLines(lines) {
       if (npcKey) {
         _sgLastVendorKey = npcKey;  // set here so gold updates work even if VendorAddItem lookup fails
         _sgPendingSaleGold = 0;     // new vendor session — reset accumulator
-        const prevGold = d.npcs[npcKey]?.currentGold;
-        d.npcs[npcKey] = { ...(d.npcs[npcKey] || {}), currentGold: +m[3], maxGold: +m[5], resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
+        const prevGold    = d.npcs[npcKey]?.currentGold;
+        const prevFavor   = d.npcs[npcKey]?.favorLevel;
+        // 2147483647 (Int32.MaxValue) is the game's sentinel for buy-only NPCs
+        // that have no real gold cap — treat as no vendor-gold data.
+        const parsedGold = +m[3], parsedMax = +m[5];
+        const hasRealGold = parsedMax < 2147483647;
+        d.npcs[npcKey] = { ...(d.npcs[npcKey] || {}),
+          currentGold: hasRealGold ? parsedGold : null,
+          maxGold:     hasRealGold ? parsedMax  : null,
+          resetAt: +m[4], favorLevel: m[2], loggedAt: Date.now() };
+        const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
         if (prevGold !== +m[3]) {
-          const displayName = NPCS[npcKey]?.name || npcKey.replace('NPC_', '');
           showToast(`↑ ${displayName} updated`);
         }
+        const goldStr  = `gold ${(+m[3]).toLocaleString()} / ${(+m[5]).toLocaleString()}`;
+        const favorStr = prevFavor && prevFavor !== m[2] ? ` · favor ${prevFavor} → ${m[2]}` : ` · favor ${m[2]}`;
+        _wsLog(char, `${displayName}: ${goldStr}${favorStr}`);
         vendorCount++;
       }
       continue;
@@ -3868,23 +4596,45 @@ function parsePlayerLogLines(lines) {
     if (m && _sgLastVendorKey && _sgPendingSaleGold > 0) {
       const npcData = d.npcs[_sgLastVendorKey];
       if (npcData?.currentGold != null) {
+        const beforeGold = npcData.currentGold;
         npcData.currentGold = Math.max(0, npcData.currentGold - _sgPendingSaleGold);
         npcData.loggedAt = Date.now();
+        const displayName = NPCS[_sgLastVendorKey]?.name || _sgLastVendorKey.replace('NPC_', '');
+        _wsLog(char, `${displayName}: sold for ${_sgPendingSaleGold.toLocaleString()}g · gold ${npcData.currentGold.toLocaleString()} (was ${beforeGold.toLocaleString()})`);
         vendorCount++;
       }
       _sgPendingSaleGold = 0;
     }
 
+    // ProcessShowStorageVault — fired when the player opens a vault; links entityId → vault name
+    // Format: ProcessShowStorageVault(entityId, capacity, "VaultName", ...)
+    m = line.match(/ProcessShowStorageVault\((-?\d+),\s*\d+,\s*"([^"]+)"/);
+    if (m) {
+      const entityId  = m[1];
+      const vaultName = m[2];
+      if (!_sgVaultEntityMap[char]) _sgVaultEntityMap[char] = {};
+      _sgVaultEntityMap[char][entityId] = vaultName;
+    }
+
     // ProcessAddToStorageVault — confirms the preceding DeleteItem was a storage deposit
     // Capture TypeName directly from the log line as a fallback so detection works even when
     // invInstanceMap wasn't populated from the login burst (mid-session start)
-    m = line.match(/LocalPlayer: ProcessAddToStorageVault\(\d+,\s*-?\d+,\s*-?\d+,\s*(\w+)\((\d+)\)\)/);
+    m = line.match(/LocalPlayer: ProcessAddToStorageVault\((-?\d+),\s*-?\d+,\s*-?\d+,\s*(\w+)\((\d+)\)\)/);
     if (m) {
-      const instanceId = m[2];
-      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId ?? ITEMS_BY_INTERNAL_NAME[m[1]];
+      const entityId   = m[1];
+      const instanceId = m[3];
+      const typeId = _pendingDeletes[char]?.[instanceId]?.typeId ?? ITEMS_BY_INTERNAL_NAME[m[2]];
       if (typeId !== undefined) {
         if (_pendingDeletes[char]) delete _pendingDeletes[char][instanceId];
-        if (sgMoveItemToStorage(char, String(typeId), instanceId)) vendorCount++;
+        if (sgMoveItemToStorage(char, String(typeId), instanceId)) {
+          // Tag the stashed copy with its vault name so it's restored correctly when taken back out
+          const vaultName = _sgVaultEntityMap[char]?.[entityId];
+          if (vaultName && _sgItemStash[char]?.[instanceId]) {
+            _sgItemStash[char][instanceId].StorageVault = vaultName;
+            _sgItemStash[char][instanceId].IsInInventory = false;
+          }
+          vendorCount++;
+        }
       }
     }
 
@@ -3897,6 +4647,24 @@ function parsePlayerLogLines(lines) {
       const typeId = invInstanceMap[char]?.[instanceId]; // set by preceding ProcessAddItem
       if (typeId !== undefined) {
         if (sgAddInventoryItem(char, String(typeId), instanceId)) vendorCount++;
+      }
+    }
+
+    // ProcessUpdateRecipe — fires every ~4 s while crafting; second arg is the
+    // cumulative lifetime completion count.  Update RecipeCompletions live so the
+    // Work Orders tab reflects the latest count without needing a re-export.
+    m = line.match(/ProcessUpdateRecipe\((\d+),\s*(\d+)\)/);
+    if (m) {
+      const recipeId  = parseInt(m[1]);
+      const newCount  = parseInt(m[2]);
+      const recipeKey = RECIPE_RID_MAP[recipeId];
+      if (recipeKey) {
+        const charObj = characters.find(c => c.charData?.Character === char);
+        if (charObj) {
+          if (!charObj.charData.RecipeCompletions) charObj.charData.RecipeCompletions = {};
+          charObj.charData.RecipeCompletions[recipeKey] = newCount;
+          vendorCount++;
+        }
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -4283,11 +5051,18 @@ async function pollPlayerLog() {
     playerLogFileSize += new TextEncoder().encode(processText).byteLength;
     const lines = processText.split('\n');
     const count = parsePlayerLogLines(lines);
-    if (count > 0 && mainTab === 'favors') renderFavorsTab();
-    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
-    if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
-    if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
-    if (mainTab === 'settings') renderSettingsTab();
+    if (_parseLogCharChanged && characters.length > 0) {
+      // ProcessAddPlayer fired — switch to the newly logged-in character
+      const matched = characters.find(c => c.charData.Character === currentLogChar);
+      if (matched) { activeCharId = matched.id; sellGiftCharId = matched.id; }
+      renderAll();
+    } else {
+      if (count > 0 && mainTab === 'favors') renderFavorsTab();
+      if (count > 0 && mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+      if (count > 0 && mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
+      if (count > 0 && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+      if (mainTab === 'settings') renderSettingsTab();
+    }
   } catch(e) {
     // File moved or permission lost
     playerLogWatchActive = false;
@@ -4334,6 +5109,40 @@ async function resumePlayerLog() {
   } catch(e) {}
 }
 
+function openWsLogModal() {
+  // Remove any existing modal first
+  document.getElementById('wsLogModal')?.remove();
+
+  const rows = wsBridgeLog.length === 0
+    ? `<div style="padding:20px;text-align:center;color:var(--text-dim);font-style:italic">No events logged yet — open a vendor or give a gift.</div>`
+    : wsBridgeLog.map(e =>
+        `<div class="ws-log-row" title="${e.ts} · ${e.char} · ${e.msg}">
+           <span class="ws-log-ts">${e.ts}</span>
+           <span class="ws-log-char">${e.char}</span>
+           <span class="ws-log-msg">${e.msg}</span>
+         </div>`
+      ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'wsLogModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;width:min(680px,95vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.7)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">NPC Update Log</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:var(--text-dim)">${wsBridgeLog.length} event${wsBridgeLog.length!==1?'s':''}</span>
+          <button class="sync-btn" style="padding:2px 10px;font-size:11px" onclick="wsBridgeLog=[];openWsLogModal()">✕ Clear</button>
+          <button class="sync-btn" style="padding:2px 10px;font-size:11px" onclick="document.getElementById('wsLogModal').remove()">Close</button>
+        </div>
+      </div>
+      <div class="ws-log-box" style="max-height:none;flex:1;overflow-y:auto;border:none;border-radius:0 0 8px 8px;margin:0">${rows}</div>
+    </div>`;
+  // Click backdrop to close
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
 function clearPlayerLogData() {
   playerLogData = {};
   gardenData = {};
@@ -4368,7 +5177,7 @@ function formatGoldReset(resetAt) {
 function buildFavorVendorPanel(npcKey, charName) {
   const charData = charName ? playerLogData[charName] : null;
   const v = charData?.npcs[npcKey];
-  if (!v || v.currentGold == null) return '';
+  if (!v || !_goldOk(v.currentGold)) return '';
   const pct = v.maxGold > 0 ? Math.round(v.currentGold / v.maxGold * 100) : 0;
   const goldColor = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
   const resetStr = formatGoldReset(v.resetAt);
@@ -4418,27 +5227,36 @@ function _formatItemTypeName(t) {
   return t.replace(/([A-Z])/g, ' $1').trim();
 }
 
-// Return { store: string[], consignment: string[] } of unique item type names for an NPC
+// Return { store: string[], consignment: string[], goldTiers: [{favor,gold,types}] } for an NPC.
+// goldTiers is in ascending favor order (matches CapIncreases array order from game data).
 function getNpcServiceItemTypes(npcKey) {
   const npc = NPCS[npcKey];
-  if (!npc) return { store: [], consignment: [] };
+  if (!npc) return { store: [], consignment: [], goldTiers: [] };
   const store = new Set(), consignment = new Set();
+  const goldTiers = [];
   for (const svc of (npc.services || [])) {
     if (svc.type === 'Store') {
-      for (const cap of svc.capIncreases) {
+      for (const cap of (svc.capIncreases || [])) {
         const parts = cap.split(':');
-        if (parts.length >= 3) parts[2].split(',').forEach(t => store.add(t.trim()));
+        if (parts.length >= 2) {
+          const favor = parts[0];
+          const gold  = parseInt(parts[1]) || 0;
+          const types = parts.length >= 3 ? parts[2].split(',').map(t => t.trim()).filter(Boolean) : [];
+          types.forEach(t => store.add(t));
+          goldTiers.push({ favor, gold, types });
+        }
       }
     } else if (svc.type === 'Consignment') {
-      for (const t of svc.itemTypes) consignment.add(t.trim());
+      for (const t of (svc.itemTypes || [])) consignment.add(t.trim());
     }
   }
-  return { store: [...store], consignment: [...consignment] };
+  return { store: [...store], consignment: [...consignment], goldTiers };
 }
 
-function buildNpcStorePanel(npcKey) {
-  const { store, consignment } = getNpcServiceItemTypes(npcKey);
-  if (!store.length && !consignment.length) return '';
+// currentFavor: optional favor level string for the active character — used to highlight the matching tier.
+function buildNpcStorePanel(npcKey, currentFavor) {
+  const { store, consignment, goldTiers } = getNpcServiceItemTypes(npcKey);
+  if (!store.length && !consignment.length && !goldTiers.length) return '';
   const sectionHeader = (label) =>
     `<div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px;padding-bottom:3px;border-bottom:1px solid var(--border)">${label}</div>`;
   const tagRow = (tags, cls) =>
@@ -4446,6 +5264,22 @@ function buildNpcStorePanel(npcKey) {
   let html = '';
   if (store.length) html += `${sectionHeader('Buys &amp; Sells')}${tagRow(store, 'npc-store-tag')}`;
   if (consignment.length) html += `<div style="margin-top:${store.length ? 10 : 0}px">${sectionHeader('Consignment')}${tagRow(consignment, 'npc-consign-tag')}</div>`;
+  if (goldTiers.length) {
+    const rows = goldTiers.map(({ favor, gold }) => {
+      const isCurrent = favor === currentFavor;
+      const fc = FAVOR_COLORS[favor];
+      const textColor = fc ? fc.text : 'var(--text-dim)';
+      const rowStyle = isCurrent
+        ? `background:var(--bg3);border-radius:3px;padding:2px 6px;margin-left:-6px;margin-right:-6px`
+        : `padding:1px 0`;
+      return `<div style="display:flex;align-items:center;gap:8px;${rowStyle}">
+        <span style="font-size:10px;color:${isCurrent ? 'var(--gold)' : 'var(--bg3)'};min-width:10px">▶</span>
+        <span style="min-width:90px;font-size:11px;color:${isCurrent ? textColor : 'var(--text-dim)'}">${favor}</span>
+        <span style="font-size:11px;${isCurrent ? `color:var(--gold);font-weight:600;font-family:'Cinzel',serif` : 'color:var(--text-dim)'}">🪙 ${gold.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+    html += `<div style="margin-top:${store.length || consignment.length ? 10 : 0}px">${sectionHeader('Gold Cap by Favor')}${rows}</div>`;
+  }
   return `<div style="padding:8px 4px 6px">${html}</div>`;
 }
 
@@ -4524,17 +5358,42 @@ function renderFavorsTab() {
     const q = favorSearchQ.toLowerCase();
     npcs = npcs.filter(n => n.name.toLowerCase().includes(q) || n.area.toLowerCase().includes(q));
   }
-  // Sort: log-only last among met, unmet always last; within met sort by favor rank desc then name
+  // Sort: unmet always last, log-only last among met, then by chosen column
   npcs.sort((a, b) => {
-    const aUnmet = !!a.unmet, bUnmet = !!b.unmet;
-    if (aUnmet !== bUnmet) return aUnmet ? 1 : -1;
+    if (!!a.unmet !== !!b.unmet) return a.unmet ? 1 : -1;
     if (a.logOnly !== b.logOnly) return a.logOnly ? 1 : -1;
-    const aVals = Object.values(a.chars);
-    const bVals = Object.values(b.chars);
-    const aMax = aVals.length ? Math.max(...aVals.map(favorRank)) : -1;
-    const bMax = bVals.length ? Math.max(...bVals.map(favorRank)) : -1;
-    if (bMax !== aMax) return bMax - aMax;
-    return a.name.localeCompare(b.name);
+    let cmp = 0;
+    if (favorSortCol === 'name') {
+      cmp = a.name.localeCompare(b.name);
+    } else if (favorSortCol === 'gold') {
+      const _ag = singleCharName ? playerLogData[singleCharName]?.npcs[a.key]?.currentGold : null;
+      const _bg = singleCharName ? playerLogData[singleCharName]?.npcs[b.key]?.currentGold : null;
+      const ag = _goldOk(_ag) ? _ag : null;
+      const bg = _goldOk(_bg) ? _bg : null;
+      if (ag === null && bg === null) cmp = a.name.localeCompare(b.name);
+      else if (ag === null) cmp = 1;
+      else if (bg === null) cmp = -1;
+      else cmp = ag - bg;
+    } else { // 'favor'
+      if (singleCharName) {
+        // Single-char: sort by exact favor value when available, fall back to tier floor
+        const ef_a = playerLogData[singleCharName]?.npcs[a.key]?.exactFavor ?? null;
+        const ef_b = playerLogData[singleCharName]?.npcs[b.key]?.exactFavor ?? null;
+        const tier_a = Object.values(a.chars)[0] ?? null;
+        const tier_b = Object.values(b.chars)[0] ?? null;
+        const val_a = ef_a ?? (tier_a != null ? (FAVOR_TIER_FLOORS[tier_a] ?? 0) : -99999);
+        const val_b = ef_b ?? (tier_b != null ? (FAVOR_TIER_FLOORS[tier_b] ?? 0) : -99999);
+        cmp = val_a - val_b;
+      } else {
+        const aVals = Object.values(a.chars);
+        const bVals = Object.values(b.chars);
+        const aMax = aVals.length ? Math.max(...aVals.map(favorRank)) : -1;
+        const bMax = bVals.length ? Math.max(...bVals.map(favorRank)) : -1;
+        cmp = aMax - bMax;
+      }
+      if (cmp === 0) cmp = a.name.localeCompare(b.name);
+    }
+    return favorSortDir === 'asc' ? cmp : -cmp;
   });
 
   // Area filter chips
@@ -4573,15 +5432,18 @@ function renderFavorsTab() {
     const hasVendorData = isAll
       ? charList.some(c => playerLogData[c.charData?.Character]?.npcs[npc.key])
       : !!(singleCharName && playerLogData[singleCharName]?.npcs[npc.key]);
-    const { store: _storeTypes, consignment: _consignTypes } = dataLoaded.npcs ? getNpcServiceItemTypes(npc.key) : { store: [], consignment: [] };
-    const hasStoreItems = _storeTypes.length > 0 || _consignTypes.length > 0;
+    const { store: _storeTypes, consignment: _consignTypes, goldTiers: _goldTiers } = dataLoaded.npcs ? getNpcServiceItemTypes(npc.key) : { store: [], consignment: [], goldTiers: [] };
+    const hasStoreItems = _storeTypes.length > 0 || _consignTypes.length > 0 || _goldTiers.length > 0;
     const hasExpand = hasTraining || hasVendorData || hasStoreItems;
     const expanded = expandedFavorNpcs.has(npc.key);
     const toggleIcon = hasExpand ? `<span style="font-size:10px;color:var(--text-dim);margin-left:5px">${expanded ? '▲' : '▼'}</span>` : '';
+    // Current favor level for this character (used to highlight the matching gold cap tier)
+    const _currentFavor = isAll ? null : (Object.values(npc.chars)[0] || (singleCharName && playerLogData[singleCharName]?.npcs[npc.key]?.favorLevel) || null);
 
+    const colSpan = isAll ? 2 : 3;
     const detailRow = (hasExpand && expanded)
-      ? `<tr><td colspan="2" style="padding:0 8px 10px 12px;background:var(--bg2);border-bottom:1px solid var(--border)">
-          ${hasStoreItems ? buildNpcStorePanel(npc.key) : ''}
+      ? `<tr><td colspan="${colSpan}" style="padding:0 8px 10px 12px;background:var(--bg2);border-bottom:1px solid var(--border)">
+          ${hasStoreItems ? buildNpcStorePanel(npc.key, _currentFavor) : ''}
           ${isAll ? buildFavorVendorPanelAllChars(npc.key, charList) : buildFavorVendorPanel(npc.key, singleCharName)}
           ${hasTraining ? buildFavorTrainingPanel(npc.key, charList) : ''}
         </td></tr>`
@@ -4593,6 +5455,15 @@ function renderFavorsTab() {
     const pinBtn = (!isAll && !npc.unmet) ? `<span class="favor-pin-btn${isPinned?' pinned':''}" title="${isPinned?'Unpin':'Pin'} NPC"
       onclick="event.stopPropagation();togglePinnedNpc('${activeCharId}','${safeKey}')">${isPinned?'★':'☆'}</span>` : '';
 
+    // Gold column (single-char mode only)
+    const logNpc = isAll ? null : (singleCharName ? playerLogData[singleCharName]?.npcs[npc.key] : null);
+    const goldCell = isAll ? '' : (_goldOk(logNpc?.currentGold)
+      ? `<td style="text-align:right;white-space:nowrap;vertical-align:middle;padding-right:14px">
+           <div style="color:var(--gold-light);font-size:12px">${logNpc.currentGold.toLocaleString()}</div>
+           <div style="font-size:10px;color:var(--text-dim);margin-top:1px">${formatGoldReset(logNpc.resetAt)}</div>
+         </td>`
+      : '<td></td>');
+
     const rowOpacity = npc.unmet ? ' opacity:.45' : '';
     return `<tr class="favor-row" style="${hasExpand ? 'cursor:pointer;' : ''}${rowOpacity}"
       onclick="${hasExpand ? `toggleFavorNpc('${safeKey}')` : ''}"
@@ -4602,11 +5473,19 @@ function renderFavorsTab() {
         <div class="favor-npc-name">${npc.name}${logOnlyBadge}${toggleIcon}${pinBtn}</div>
         ${npc.area ? `<div class="favor-npc-area">${npc.area}</div>` : ''}
       </td>
+      ${goldCell}
       ${favorCell}
     </tr>${detailRow}`;
   };
 
-  const thead = `<thead><tr><th>NPC</th>${showAll ? charHeaders : '<th>Favor</th>'}</tr></thead>`;
+  const _fsTh = (col, label, extraStyle = '') => {
+    const active = favorSortCol === col;
+    const arrow  = active ? (favorSortDir === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
+    return `<th style="cursor:pointer;user-select:none;${extraStyle}${active ? 'color:var(--gold-light);' : ''}" onclick="cycleFavorSort('${col}')">${label}<span style="font-size:10px;opacity:${active ? 1 : .4}">${arrow}</span></th>`;
+  };
+  const thead = showAll
+    ? `<thead><tr>${_fsTh('name','NPC')}${charHeaders}</tr></thead>`
+    : `<thead><tr>${_fsTh('name','NPC')}${_fsTh('gold','Gold','text-align:right;')}${_fsTh('favor','Favor')}</tr></thead>`;
   const makeTable = (rowsHtml) => `<table class="favor-table">${thead}<tbody>${rowsHtml}</tbody></table>`;
 
   const buildContent = (charList, isAll) => {
@@ -4841,6 +5720,10 @@ function showVaultFavorTooltip(npcKey, charNamesJson, e) {
 // RECIPES TAB
 // ═══════════════════════════════════════════════════════════
 let recipeSkillFilter = '';
+let recipeSkillOpen   = false;
+let recipeSkillSearch = '';
+let _recipeSkillList  = [];
+let _recipeSkillClickListenerAdded = false;
 let recipeSearchQ = '';
 let recipeSearchMode = 'name'; // 'name' | 'ingredient'
 let recipeSkillSort = null; // null | 'asc' | 'desc'
@@ -4850,6 +5733,8 @@ let vaultAreaFilter = '';
 let favorAreaFilter = '';
 let favorSearchQ = '';
 let favorShowUnmet = false;
+let favorSortCol = 'favor'; // 'name' | 'gold' | 'favor'
+let favorSortDir = 'desc';
 let completedWOSearch = '';
 // Favor Calculator state
 let favorCalcCharId       = '';
@@ -5141,17 +6026,99 @@ function toggleMapLandmarks() { mapShowLandmarks = !mapShowLandmarks; renderMaps
 function toggleMapLabels() { mapShowNpcLabels = !mapShowNpcLabels; renderMapsTab(); }
 
 function toggleRecipeRow(k) {
-  if (expandedRecipes.has(k)) expandedRecipes.delete(k);
-  else expandedRecipes.add(k);
+  if (expandedRecipes.has(k)) {
+    expandedRecipes.delete(k);
+    // Also collapse any expanded sub-ingredient trees belonging to this recipe
+    for (const p of [...expandedRecipeIngs]) { if (p.startsWith(k + '~')) expandedRecipeIngs.delete(p); }
+  } else {
+    expandedRecipes.add(k);
+  }
   // Only update the tbody, not the whole tab (preserves search focus)
   const { display, allRecipeKeys } = getRecipeDisplayList();
   const tbody = document.getElementById('recipeTableBody');
   if (tbody) tbody.innerHTML = buildRecipeRows(display, allRecipeKeys);
 }
 
+function toggleRecipeIng(path) {
+  if (expandedRecipeIngs.has(path)) expandedRecipeIngs.delete(path);
+  else expandedRecipeIngs.add(path);
+  const { display, allRecipeKeys } = getRecipeDisplayList();
+  const tbody = document.getElementById('recipeTableBody');
+  if (tbody) tbody.innerHTML = buildRecipeRows(display, allRecipeKeys);
+}
+
+// Recursively builds one ingredient line, with optional sub-recipe expansion.
+// path     — unique string identifying this ingredient's position in the tree (used as toggle key)
+// depth    — current nesting level (0 = top-level ingredient of the opened recipe)
+// knownKeys — Set of recipe keys the current character has learned (used to prefer known recipes)
+function buildIngTree(ingId, qty, chance, path, depth, storageMap, vaultBreakdown, knownKeys) {
+  const MAX_DEPTH = 3;
+  const idata   = ITEMS[String(ingId)];
+  const iName   = idata ? idata[0] : `#${ingId}`;
+  const iconId  = ITEMS_ICONS[String(ingId)];
+  const iconUrl = iconId ? getIconUrl(iconId) : null;
+  const iconHtml = iconUrl
+    ? `<img src="${iconUrl}" alt="" style="width:14px;height:14px;margin-right:3px;vertical-align:middle;image-rendering:pixelated;flex-shrink:0">`
+    : '';
+  const chanceHtml = chance != null
+    ? `<span style="font-size:10px;color:var(--orange);margin-left:4px">${Math.round(chance*100)}% consumed</span>`
+    : '';
+
+  // Storage vault chips
+  const ingVaults = vaultBreakdown ? (vaultBreakdown[String(ingId)] || {}) : {};
+  const vaultChipsHtml = Object.entries(ingVaults).map(([v, amt]) => {
+    const c = vc(v);
+    return `<span class="vault-chip" style="background:${c.bg};border-color:${c.border};color:${c.text};font-size:9px;padding:0 4px">${fvn(v)} <strong>${amt}</strong></span>`;
+  }).join('');
+  const storageHtml = vaultChipsHtml
+    ? `<span class="vault-chips" style="display:inline-flex;gap:2px;margin-left:5px;vertical-align:middle">${vaultChipsHtml}</span>`
+    : '';
+
+  // Source-where-to-get badges only at top level (depth 0) to avoid clutter
+  const srcBadges = depth === 0 ? renderItemSources(ingId, 4, `rit_${path}`, ['NpcGift', 'HangOut']) : '';
+
+  // Sub-recipe: find a recipe that produces this ingredient
+  let craftToggle = '';
+  let subHtml = '';
+  if (depth < MAX_DEPTH && dataLoaded.recipes) {
+    const byResult  = _getRecipeByResultId();
+    const candidates = byResult[String(ingId)] || [];
+    // Prefer a recipe the character already knows, else first available
+    const subKey = candidates.find(k => knownKeys?.has(k)) ?? candidates[0] ?? null;
+    if (subKey) {
+      const subR    = RECIPES[subKey];
+      const subPath = `${path}~${subKey}`;
+      const isExpanded = expandedRecipeIngs.has(subPath);
+      const safePath = subPath.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      craftToggle = `<span style="cursor:pointer;font-size:10px;color:var(--gold-dim);margin-left:5px;user-select:none" onclick="event.stopPropagation();toggleRecipeIng('${safePath}')" title="${subR?.[0]||subKey}">${isExpanded?'▼':'▶'}</span>`;
+
+      if (isExpanded && subR) {
+        const craftTag  = recipeCraftCountTag(subR, storageMap);
+        const subIngs   = (subR[2] || []).map(([sId, sQty, sChance]) =>
+          buildIngTree(sId, sQty, sChance, `${subPath}~${sId}`, depth + 1, storageMap, vaultBreakdown, knownKeys)
+        ).join('');
+        subHtml = `<div style="margin:3px 0 1px 22px;padding:4px 6px 3px 10px;border-left:2px solid rgba(100,110,140,.4);border-radius:0 3px 3px 0;background:rgba(0,0,0,.13)">
+          <div style="font-size:10px;color:var(--text-dim);margin-bottom:3px">
+            ${subR[0]}<span style="margin-left:5px;font-size:9px;color:var(--text-dim);opacity:.7">[${subR[1]}]</span>${craftTag}
+          </div>
+          ${subIngs}
+        </div>`;
+      }
+    }
+  }
+
+  return `<div style="padding:2px 0">
+    <div style="display:flex;align-items:flex-start;gap:4px">
+      <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;min-width:14px;flex-shrink:0">${qty}×</span>
+      <div style="flex:1;min-width:0">${iconHtml}<span style="font-size:11px;color:var(--text)">${iName}</span>${chanceHtml}${storageHtml}${craftToggle}${srcBadges}</div>
+    </div>${subHtml}</div>`;
+}
+
 function buildRecipeRows(displayList, allRecipeKeys) {
   const showAllChars = activeCharId === '__all__' && characters.length > 1;
   const activeChar = showAllChars ? null : (characters.find(c => c.id === activeCharId) || characters[0]);
+  const storageMap    = activeChar ? _buildStorageMap(activeChar)    : null;
+  const vaultBreakdown = activeChar ? _buildVaultBreakdown(activeChar) : null;
   return displayList.map(([k, r]) => {
     const [rName, rSkill, , resultItems, skillLevelReq] = r;
     const expanded = expandedRecipes.has(k);
@@ -5181,7 +6148,7 @@ function buildRecipeRows(displayList, allRecipeKeys) {
 
     if (!expanded) {
       return `<tr class="recipe-row" style="cursor:pointer" onclick="toggleRecipeRow('${safeK}')">
-        <td><div style="display:flex;align-items:center;gap:4px">${recipeIconHtml}<span class="recipe-name">${rName}</span>${cookingKwTag(r)}<span style="font-size:11px;color:var(--text-dim);margin-left:4px">▼</span></div></td>
+        <td><div style="display:flex;align-items:center;gap:4px">${recipeIconHtml}<span class="recipe-name">${rName}</span>${_recipeYieldBadge(r)}${cookingKwTag(r)}${recipeCraftCountTag(r, storageMap)}<span style="font-size:11px;color:var(--text-dim);margin-left:4px">▼</span></div></td>
         <td><span class="recipe-skill-tag">${rSkill}</span>${skillLevelReq > 0 ? `<span style="font-size:10px;color:var(--text-dim);margin-left:4px">Lv.${skillLevelReq}</span>` : ''}</td>
         ${charCell}
       </tr>`;
@@ -5193,7 +6160,25 @@ function buildRecipeRows(displayList, allRecipeKeys) {
     const sourceBadges = sources.filter(s => s.t !== 'Training' && s.t !== 'HangOut').map(s => {
       const t = s.t; let cls = 'recipe-source', label = '', extra = '';
       if (t === 'Skill')   { cls += ' skill';   label = `📚 Skill: ${s.skill||'?'}`; }
-      else if (t === 'Item')    { cls += ' item';    label = `📦 ${ITEMS[String(s.item)]?.[0]||`item #${s.item}`}`; }
+      else if (t === 'Item') {
+        cls += ' item';
+        label = `📦 ${ITEMS[String(s.item)]?.[0]||`item #${s.item}`}`;
+        if (storageMap) {
+          const qty = storageMap[String(s.item)] || 0;
+          if (qty > 0) {
+            const vbd = vaultBreakdown?.[String(s.item)];
+            const chips = vbd
+              ? Object.entries(vbd).sort((a,b)=>b[1]-a[1]).map(([v,amt]) => {
+                  const c = vc(v);
+                  return `<span class="vault-chip" style="background:${c.bg};border-color:${c.border};color:${c.text};font-size:9px;padding:0 4px">${fvn(v)} <strong>${amt}</strong></span>`;
+                }).join('')
+              : '';
+            extra = chips
+              ? ` <span class="vault-chips" style="display:inline-flex;gap:2px;vertical-align:middle;margin-left:3px">${chips}</span>`
+              : ` <span style="color:var(--green);font-size:10px;font-weight:600;margin-left:3px">×${qty}</span>`;
+          }
+        }
+      }
       else if (t === 'NpcGift') { cls += ' gift';    label = `🎁 ${s.npcName||s.npc||'Gift'}`; extra = s.area?` <span style="opacity:.7">(${s.area})</span>`:''; }
       else if (t === 'Quest')   { cls += ' quest';   label = `📜 Quest`; }
       else if (t === 'Effect')  { cls += ' effect';  label = `✨ Effect`; }
@@ -5242,19 +6227,9 @@ function buildRecipeRows(displayList, allRecipeKeys) {
     if (dataLoaded.sources_items) {
       const [,,ings] = r;
       if (ings?.length) {
-        const ingLines = ings.map(([ingId, qty, chance]) => {
-          const idata = ITEMS[String(ingId)];
-          const iName = idata ? idata[0] : `#${ingId}`;
-          const iconId = ITEMS_ICONS[String(ingId)];
-          const iconUrl = iconId ? getIconUrl(iconId) : null;
-          const iconHtml = iconUrl ? `<img class="item-icon" src="${iconUrl}" alt="" style="width:14px;height:14px;margin-right:4px;vertical-align:middle">` : '';
-          const srcBadges = renderItemSources(ingId, 4, `rec_${k}`, ['NpcGift']);
-          const chanceHtml = chance != null ? `<span style="font-size:10px;color:var(--orange);margin-left:4px">${Math.round(chance*100)}% consumed</span>` : '';
-          return `<div style="display:flex;align-items:flex-start;gap:4px;padding:2px 0">
-            <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;min-width:14px">${qty}×</span>
-            <div>${iconHtml}<span style="font-size:11px;color:var(--text)">${iName}</span>${chanceHtml}${srcBadges}</div>
-          </div>`;
-        }).join('');
+        const ingLines = ings.map(([ingId, qty, chance]) =>
+          buildIngTree(ingId, qty, chance, `${k}~${ingId}`, 0, storageMap, vaultBreakdown, allRecipeKeys)
+        ).join('');
         ingsHtml = `<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(42,47,63,.5)">${ingLines}</div>`;
       }
     }
@@ -5266,12 +6241,12 @@ function buildRecipeRows(displayList, allRecipeKeys) {
           <div style="flex:1">
             <div style="display:flex;align-items:center;gap:6px">
               <span class="recipe-name">${rName}</span>
-              ${cookingKwTag(r)}
+              ${cookingKwTag(r)}${recipeCraftCountTag(r, storageMap)}
               <span style="font-size:11px;color:var(--text-dim);cursor:pointer">▲</span>
             </div>
             <div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:2px" onclick="event.stopPropagation()">${sourceBadges}</div>
             ${npcDetailHtml}
-            <div onclick="event.stopPropagation()">${ingsHtml}</div>
+            <div onclick="event.stopPropagation()">${ingsHtml}${_recipeYieldHtml(r)}</div>
           </div>
         </div>
       </td>
@@ -5319,7 +6294,6 @@ function renderRecipesTab() {
 
   const { known, locked, display, allRecipeKeys } = getRecipeDisplayList();
   const skills = [...new Set(Object.values(RECIPES).map(r=>r[1]))].filter(Boolean).sort();
-  const skillOpts = skills.map(s=>`<option value="${s}" ${s===recipeSkillFilter?'selected':''}>${s}</option>`).join('');
 
   // If the shell is already rendered (same tab, user is just typing) — only update the body
   const existingShell = document.getElementById('recipeTableBody');
@@ -5341,9 +6315,7 @@ function renderRecipesTab() {
         <button class="mode-btn ${recipeSearchMode==='name'?'active':''}" onclick="setRecipeSearchMode('name')">Name</button>
         <button class="mode-btn ${recipeSearchMode==='ingredient'?'active':''}" onclick="setRecipeSearchMode('ingredient')">Ingredient</button>
       </div>
-      <select class="recipe-skill-filter" id="recipeSkillSelect" onchange="onRecipeSkillFilter(this.value)">
-        <option value="">All Skills</option>${skillOpts}
-      </select>
+      ${_renderRecipeSkillDd(skills)}
       <div class="mode-toggle" id="recipeModToggle">
         <button class="mode-btn ${recipeShowLocked==='known'?'active':''}" id="recipeBtnKnown" onclick="setRecipeLocked('known')">Known (<span id="recipeKnownCount">${known.length}</span>)</button>
         <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (<span id="recipeAllCount">${known.length+locked.length}</span>)</button>
@@ -5360,6 +6332,8 @@ function renderRecipesTab() {
           </table>`}
     </div>
   </div>`;
+  recipeSkillOpen = false;
+  _rsddEnsureClickOutside();
 }
 
 function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCount) {
@@ -5433,6 +6407,93 @@ function setRecipeSearchMode(mode) {
   updateRecipeBody(display, allRecipeKeys, known.length, locked.length);
 }
 function onRecipeSkillFilter(v) { recipeSkillFilter = v; renderRecipesTab(); }
+
+// ── Recipe skill searchable dropdown ─────────────────────────────────────────
+function _buildRecipeSkillListHtml() {
+  const q = recipeSkillSearch.toLowerCase();
+  const list = q ? _recipeSkillList.filter(s => s.toLowerCase().includes(q)) : _recipeSkillList;
+  if (!list.length) return '<div class="kw-dd-item" style="color:var(--text-dim);cursor:default">No skills found</div>';
+  return list.map(s =>
+    `<div class="kw-dd-item${s === recipeSkillFilter ? ' kw-selected' : ''}"
+      onmousedown="event.preventDefault();_rsddSelect('${s.replace(/'/g,"\\'")}')">
+      ${s}</div>`
+  ).join('');
+}
+
+function _renderRecipeSkillDd(skills) {
+  _recipeSkillList = skills;
+  const hasVal = recipeSkillFilter !== '';
+  const inputVal = hasVal ? recipeSkillFilter.replace(/"/g, '&quot;') : '';
+  const clearBtn = hasVal
+    ? `<button class="kw-dd-clear" id="recipeSkillClear" title="Clear skill filter"
+         onmousedown="event.preventDefault();event.stopPropagation();_rsddClear()">✕</button>`
+    : '';
+  return `<div class="kw-dd-wrap" id="recipeSkillWrap" style="width:190px">
+    ${clearBtn}
+    <input class="kw-dd-input${hasVal ? ' has-value' : ''}" id="recipeSkillInput" type="text"
+      placeholder="All Skills…" value="${inputVal}"
+      onfocus="_rsddFocus()" oninput="_rsddSearch(this.value)" onblur="_rsddBlur()">
+    <span class="kw-dd-arrow">▾</span>
+  </div>`;
+}
+
+function _rsddFocus() {
+  if (recipeSkillOpen) return;
+  recipeSkillOpen = true;
+  recipeSkillSearch = '';
+  const wrap = document.getElementById('recipeSkillWrap');
+  if (!wrap) return;
+  document.getElementById('recipeSkillList')?.remove();
+  const list = document.createElement('div');
+  list.className = 'kw-dd-list'; list.id = 'recipeSkillList';
+  list.innerHTML = _buildRecipeSkillListHtml();
+  wrap.appendChild(list);
+}
+function _rsddBlur() { /* handled by click-outside */ }
+function _rsddSearch(v) {
+  recipeSkillSearch = v;
+  if (!recipeSkillOpen) { _rsddFocus(); return; }
+  const list = document.getElementById('recipeSkillList');
+  if (list) list.innerHTML = _buildRecipeSkillListHtml();
+}
+function _rsddSelect(skill) {
+  recipeSkillFilter = skill === recipeSkillFilter ? '' : skill; // toggle off if same
+  recipeSkillOpen = false; recipeSkillSearch = '';
+  document.getElementById('recipeSkillList')?.remove();
+  // Update input display and clear button in-place
+  const input = document.getElementById('recipeSkillInput');
+  if (input) { input.value = recipeSkillFilter; input.className = `kw-dd-input${recipeSkillFilter ? ' has-value' : ''}`; }
+  const oldClear = document.getElementById('recipeSkillClear');
+  if (recipeSkillFilter) {
+    const btn = document.createElement('button');
+    btn.className = 'kw-dd-clear'; btn.id = 'recipeSkillClear'; btn.title = 'Clear skill filter';
+    btn.setAttribute('onmousedown', 'event.preventDefault();event.stopPropagation();_rsddClear()');
+    btn.textContent = '✕';
+    if (oldClear) oldClear.replaceWith(btn); else document.getElementById('recipeSkillWrap')?.prepend(btn);
+  } else {
+    oldClear?.remove();
+  }
+  // Update recipe table and skill level
+  renderRecipesTab();
+  requestAnimationFrame(() => {
+    const el = document.getElementById('recipeSkillLevel');
+    if (el) el.innerHTML = getRecipeSkillLevelHtml();
+  });
+}
+function _rsddClear() { _rsddSelect(recipeSkillFilter); } // toggle current → clears
+function _rsddEnsureClickOutside() {
+  if (_recipeSkillClickListenerAdded) return;
+  _recipeSkillClickListenerAdded = true;
+  document.addEventListener('click', e => {
+    if (mainTab !== 'recipes' || !recipeSkillOpen) return;
+    if (!e.target.closest('#recipeSkillWrap')) {
+      recipeSkillOpen = false; recipeSkillSearch = '';
+      document.getElementById('recipeSkillList')?.remove();
+      const input = document.getElementById('recipeSkillInput');
+      if (input) input.value = recipeSkillFilter;
+    }
+  });
+}
 function cycleRecipeSkillSort() {
   recipeSkillSort = recipeSkillSort === null ? 'asc' : recipeSkillSort === 'asc' ? 'desc' : null;
   const { known, locked, display, allRecipeKeys } = getRecipeDisplayList();
@@ -5443,6 +6504,77 @@ function cookingKwTag(r) {
   if (!kw) return '';
   const isMeal = kw === 'Meal';
   return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid ${isMeal?'#7a9e6a':'#c4a24a'};background:${isMeal?'rgba(122,158,106,.15)':'rgba(196,162,74,.15)'};color:${isMeal?'#8fbb7a':'#d4b45a'};font-family:sans-serif;letter-spacing:.03em;vertical-align:middle;margin-left:5px">${kw}</span>`;
+}
+
+function _buildStorageMap(char) {
+  const m = {};
+  if (!char?.invData?.Items) return m;
+  for (const item of char.invData.Items) {
+    const tid = String(item.TypeID);
+    m[tid] = (m[tid] || 0) + (item.StackSize || 1);
+  }
+  return m;
+}
+
+// Returns {typeId: {vaultKey: qty}} for all items the character has.
+// Used to render per-vault storage chips on recipe ingredient lines.
+function _buildVaultBreakdown(char) {
+  const m = {};
+  if (!char?.invData?.Items) return m;
+  for (const item of char.invData.Items) {
+    const tid = String(item.TypeID);
+    const vault = item.StorageVault || (item.IsInInventory ? 'Inventory' : null);
+    if (!vault) continue;
+    if (!m[tid]) m[tid] = {};
+    m[tid][vault] = (m[tid][vault] || 0) + (item.StackSize || 1);
+  }
+  return m;
+}
+
+function recipeCraftCountTag(r, storageMap) {
+  if (!storageMap) return '';
+  const ings = r[2];
+  if (!ings || ings.length === 0) return '';
+  let craftable = Infinity;
+  for (const [ingId, qty] of ings) {
+    const have = storageMap[String(ingId)] || 0;
+    craftable = Math.min(craftable, Math.floor(have / qty));
+  }
+  const n = craftable === Infinity ? 0 : craftable;
+  if (n <= 0) return '';
+  return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid #4a7a5a;background:rgba(74,122,90,.18);color:#6abf87;font-family:sans-serif;letter-spacing:.03em;vertical-align:middle;margin-left:2px">×${n}</span>`;
+}
+
+// Badge shown on the collapsed recipe row when yield is non-trivial.
+function _recipeYieldBadge(r) {
+  const res = r[3];
+  if (!res?.length) return '';
+  if (res.length === 1 && res[0][1] === 1) return ''; // trivial single ×1
+  if (res.length > 1) return `<span class="recipe-yield-badge">+${res.length} items</span>`;
+  return `<span class="recipe-yield-badge">×${res[0][1]}</span>`;
+}
+
+// "Produces" section shown at the bottom of the expanded recipe row.
+function _recipeYieldHtml(r) {
+  const res = r[3];
+  if (!res?.length) return '';
+  if (res.length === 1 && res[0][1] === 1) return ''; // trivial single ×1
+  const parts = res.map(([tid, qty]) => {
+    const idata = ITEMS[String(tid)];
+    const name  = idata?.[0] || `Item #${tid}`;
+    const iconId  = ITEMS_ICONS[String(tid)];
+    const iconUrl = iconId ? getIconUrl(iconId) : null;
+    const iconHtml = iconUrl
+      ? `<img src="${iconUrl}" alt="" style="width:14px;height:14px;image-rendering:pixelated;vertical-align:middle;margin-right:2px;border-radius:2px;flex-shrink:0">`
+      : '';
+    const qtyHtml = qty > 1 ? `<span style="color:var(--gold);margin-left:2px">×${qty}</span>` : '';
+    return `<span style="display:inline-flex;align-items:center">${iconHtml}<span>${name}</span>${qtyHtml}</span>`;
+  });
+  const joined = parts.join(`<span style="color:var(--border-light);margin:0 4px">+</span>`);
+  return `<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(42,47,63,.5);display:flex;align-items:center;flex-wrap:wrap;gap:3px;font-size:12px">
+    <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;margin-right:4px">Produces</span>
+    ${joined}
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -6127,6 +7259,7 @@ function renderVaultsTab() {
 let questLocationFilter = '';
 let questSearchQ = '';
 let questCompleteFilter = ''; // '' | 'ready' | 'crafts'
+let questsSubTab = 'quests';  // 'quests' | 'workorders'
 
 function setQuestLocationFilter(loc) {
   questLocationFilter = questLocationFilter === loc ? '' : loc;
@@ -6142,7 +7275,21 @@ function onQuestSearch(v) {
 }
 function clearQuestSearch() { questSearchQ = ''; renderQuestsTab(); }
 function setQuestCompleteFilter(v) { questCompleteFilter = questCompleteFilter === v ? '' : v; renderQuestsTab(); }
-function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; questCompleteFilter = ''; setMainTab('quests'); }
+function navigateToQuest(questName) { questSearchQ = questName; questLocationFilter = ''; questCompleteFilter = ''; questsSubTab = 'quests'; setMainTab('quests'); }
+
+function setQuestsSubTab(sub) {
+  questsSubTab = sub;
+  // __availwo__ is only valid in the workorders sub-tab
+  if (sub !== 'workorders' && activeCharId === '__availwo__') activeCharId = characters[0]?.id || null;
+  renderAll();
+}
+
+function _renderQuestsWOToggle() {
+  return `<div class="quests-subtab-bar">
+    <div class="quests-subtab ${questsSubTab==='quests'?'active':''}" onclick="setQuestsSubTab('quests')">Quests</div>
+    <div class="quests-subtab ${questsSubTab==='workorders'?'active':''}" onclick="setQuestsSubTab('workorders')">Work Orders</div>
+  </div>`;
+}
 
 function goToRecipe(itemName) {
   recipeSearchQ = itemName;
@@ -6327,6 +7474,7 @@ function renderQuestsTab() {
   }).join('');
 
   document.getElementById('appContent').innerHTML = `<div class="full-panel">
+    ${_renderQuestsWOToggle()}
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <div class="search-input-wrap" style="max-width:260px">
         <button class="search-clear ${questSearchQ?'visible':''}" onclick="clearQuestSearch()">✕</button>
@@ -6396,6 +7544,152 @@ async function tryRestoreIconsFolder() {
     const perm = await h.queryPermission({ mode:'readwrite' });
     if (perm === 'granted') { iconsFolderHandle = h; await preloadIconsFromFolder(); }
   } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHAT LOG FOLDER WATCHER (browser-side FSAPI)
+// Watches the newest Chat-*.log to detect XP gains without
+// needing the survey server.
+// ═══════════════════════════════════════════════════════════
+async function saveChatLogFolderHandle(h) { try { await dbPut('folder_handle','chat_log_folder',h); } catch(e) {} }
+async function loadChatLogFolderHandle()  { return dbGet('folder_handle','chat_log_folder'); }
+
+async function tryRestoreChatLogFolder() {
+  const h = await loadChatLogFolderHandle();
+  if (!h) return;
+  try {
+    const perm = await h.queryPermission({ mode:'read' });
+    if (perm === 'granted') await _attachChatLogFolder(h, false);
+  } catch(e) {}
+}
+
+async function pickChatLogFolder() {
+  if (!window.showDirectoryPicker) { showToast('Use Chrome or Edge for folder access'); return; }
+  try {
+    const h = await window.showDirectoryPicker({ mode:'read' });
+    await saveChatLogFolderHandle(h);
+    await _attachChatLogFolder(h, true);
+    renderSettingsTab();
+  } catch(e) { if (e.name !== 'AbortError') showToast('Could not open folder: ' + e.message); }
+}
+
+async function _attachChatLogFolder(h, showToastMsg) {
+  chatLogFolderHandle = h;
+  _chatLogLastFile = '';
+  _chatLogOffset   = 0;
+  // Seek to end of the newest file so we don't replay history
+  const entry = await _findNewestChatLog();
+  if (entry) { _chatLogLastFile = entry.name; _chatLogOffset = entry.file.size; }
+  // Start polling
+  if (_chatLogInterval) clearInterval(_chatLogInterval);
+  _chatLogInterval = setInterval(_scanChatLog, CHAT_LOG_POLL_MS);
+  if (showToastMsg) showToast('Watching chat log for XP');
+}
+
+function stopChatLogWatch() {
+  if (_chatLogInterval) { clearInterval(_chatLogInterval); _chatLogInterval = null; }
+  chatLogFolderHandle = null;
+  _chatLogLastFile = '';
+  _chatLogOffset   = 0;
+  if (mainTab === 'settings') renderSettingsTab();
+}
+
+async function _findNewestChatLog() {
+  if (!chatLogFolderHandle) return null;
+  let best = null, bestMtime = 0;
+  try {
+    for await (const [name, handle] of chatLogFolderHandle.entries()) {
+      if (handle.kind !== 'file' || !name.startsWith('Chat-') || !name.endsWith('.log')) continue;
+      const file = await handle.getFile();
+      if (file.lastModified > bestMtime) { bestMtime = file.lastModified; best = { name, handle, file }; }
+    }
+  } catch(e) {}
+  return best;
+}
+
+async function _scanChatLog() {
+  if (!chatLogFolderHandle) return;
+  try {
+    const entry = await _findNewestChatLog();
+    if (!entry) return;
+    const { name, file } = entry;
+
+    // New session log file → seek to end, skip history
+    if (name !== _chatLogLastFile) {
+      _chatLogLastFile = name;
+      _chatLogOffset   = file.size;
+      return;
+    }
+
+    if (file.size <= _chatLogOffset) return; // no new bytes
+
+    const newText = await file.slice(_chatLogOffset).text();
+    const lastNL  = newText.lastIndexOf('\n');
+    if (lastNL < 0) return; // no complete line yet
+
+    const complete = newText.slice(0, lastNL + 1);
+    _chatLogOffset += new TextEncoder().encode(complete).byteLength;
+
+    let xpUpdated    = false;
+    let favorUpdated = false;
+    for (const raw of complete.split('\n')) {
+      const trimmed = raw.trim();
+      if (_parseChatLogLineForXp(trimmed))    xpUpdated    = true;
+      if (_parseChatLogLineForFavor(trimmed)) favorUpdated = true;
+    }
+
+    if (xpUpdated && mainTab === 'storage' && activeCharId !== '__sellgift__') {
+      const char = characters.find(c => c.id === activeCharId);
+      if (char) renderLeft(char);
+    }
+    if (favorUpdated && mainTab === 'favors') renderFavorsTab();
+    if (favorUpdated && mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+  } catch(e) {}
+}
+
+function _parseChatLogLineForXp(line) {
+  if (!line) return false;
+  const m = _CHAT_XP_RE.exec(line);
+  if (!m) return false;
+  const xp       = parseInt(m[1]);
+  const skill    = m[2].trim();
+  const newLevel = m[3] ? parseInt(m[3]) : null;
+
+  sessionXp[skill] = (sessionXp[skill] || 0) + xp;
+  xpEvents.push({ skill, xp, ts: Date.now() });
+  _xpPruneOld();
+  _saveXpEvents();
+
+  if (newLevel) showToast(`🎉 ${skill} reached level ${newLevel}!`, 'success');
+  return true;
+}
+
+function _parseChatLogLineForFavor(line) {
+  if (!line) return false;
+  const m = _CHAT_FAVOR_RE.exec(line);
+  if (!m) return false;
+  const amount  = parseInt(m[1]);
+  const npcName = m[2].trim();
+  const npcKey  = _npcKeyByName(npcName);
+  const char    = currentLogChar;
+  if (char && npcKey) {
+    if (!playerLogData[char]) playerLogData[char] = { npcs: {}, idMap: {} };
+    const d = playerLogData[char];
+    if (!d.npcs[npcKey]) d.npcs[npcKey] = {};
+    const prev = d.npcs[npcKey].exactFavor ?? null;
+    if (prev != null) {
+      d.npcs[npcKey].exactFavor = prev + amount;
+    } else {
+      const charObj  = characters.find(c => c.charData?.Character === char);
+      const tierName = charObj?.charData?.NPCs?.[npcKey]?.FavorLevel ?? null;
+      const floor    = tierName != null ? (FAVOR_TIER_FLOORS[tierName] ?? 0) : 0;
+      d.npcs[npcKey].exactFavor = floor + amount;
+    }
+    d.npcs[npcKey].loggedAt = Date.now();
+    savePlayerLogData();
+  }
+  showToast(`↑ ${npcName} +${amount.toLocaleString()} favor`);
+  return true;
 }
 
 // Preload all already-downloaded icons into cache as objectURLs
@@ -6664,6 +7958,27 @@ function renderSettingsTab() {
   </div>
 
   <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
+    <div class="settings-title">Chat Log (XP Tracking)</div>
+    <div class="settings-meta" style="margin-bottom:10px">Watch <code style="color:var(--gold)">Chat-*.log</code> to populate the <strong>XP/Hour</strong> tracker on the Storage tab. Select your <code style="color:var(--gold)">ChatLogs</code> folder — typically inside the Project: Gorgon AppData folder.</div>
+    <div class="settings-row">
+      <div>
+        ${_chatLogInterval
+          ? `<div class="settings-label" style="color:#7ab880">● Watching ${chatLogFolderHandle?.name || 'ChatLogs'}</div>
+             <div class="settings-meta">Tailing ${_chatLogLastFile || 'newest Chat-*.log'} · polls every ${CHAT_LOG_POLL_MS/1000}s</div>`
+          : `<div class="settings-label" style="color:var(--text-dim)">○ Not watching</div>
+             <div class="settings-meta">Select your ChatLogs folder to enable XP tracking</div>`
+        }
+      </div>
+      <div>
+        ${_chatLogInterval
+          ? `<button class="sync-btn" onclick="stopChatLogWatch()">■ Stop</button>`
+          : `<button class="sync-btn" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)" onclick="pickChatLogFolder()">📂 Watch ChatLogs</button>`
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section" style="border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
     <div class="settings-title">WebSocket Bridge</div>
     <div class="settings-meta" style="margin-bottom:10px;line-height:1.7">
       Enables automatic folder watching and live player log in Firefox and other browsers that
@@ -6682,6 +7997,11 @@ function renderSettingsTab() {
       ${!wsBridgeConnected
         ? `<a href="gorgon-bridge://start" class="sync-btn" style="text-decoration:none;display:inline-flex;align-items:center">▶ Start Bridge</a>`
         : ''}
+    </div>
+    <div style="margin-top:10px">
+      <button class="sync-btn" onclick="openWsLogModal()">
+        View Logs${wsBridgeLog.length > 0 ? ` (${wsBridgeLog.length})` : ''}
+      </button>
     </div>
   </div>
 
@@ -6787,7 +8107,16 @@ async function syncAllFiles() { for (const df of DATA_FILES) { if (df.cdn) await
 function processCDNData(key, raw) {
   if (key === 'items') {
     const out = {};
-    for (const [k,v] of Object.entries(raw)) { const id=k.split('_')[1]; if(id) out[id]=[v.Name||'',v.MaxStackSize||1,v.IconId||0,v.InternalName||'',v.Keywords||[]]; }
+    for (const [k,v] of Object.entries(raw)) {
+      const id=k.split('_')[1]; if(!id) continue;
+      // Combine base keywords with SkillPrereq:X entries derived from SkillReqs.
+      // NPC gift preferences use "SkillPrereq:Deer" etc. to match items that
+      // require a specific skill — this is the only way to detect those matches.
+      const kws = [...(v.Keywords||[])];
+      for (const sk of Object.keys(v.SkillReqs||{})) kws.push('SkillPrereq:' + sk);
+      const skillReqs = v.SkillReqs && Object.keys(v.SkillReqs).length ? v.SkillReqs : null;
+      out[id]=[v.Name||'',v.MaxStackSize||1,v.IconId||0,v.InternalName||'',kws,v.Description||'',skillReqs];
+    }
     return out;
   }
   if (key === 'recipes') {
@@ -6932,8 +8261,10 @@ function processCDNData(key, raw) {
   }
   if (key === 'tsys') {
     const out = {};
+    TSYS_SKILLS = {};
     for (const [, v] of Object.entries(raw)) {
       const name = v.InternalName; if (!name) continue;
+      if (v.Skill) TSYS_SKILLS[name] = v.Skill;
       const tiers = {};
       for (const [tid, td] of Object.entries(v.Tiers || {})) {
         const n = parseInt(tid.replace('id_', ''));
@@ -7091,7 +8422,7 @@ function renderMapNpcDetail(npcKey, char) {
 
   // Vendor gold section
   let vendorHtml = '';
-  if (logNpc?.currentGold != null) {
+  if (_goldOk(logNpc?.currentGold)) {
     const pct = logNpc.maxGold > 0 ? Math.round(logNpc.currentGold / logNpc.maxGold * 100) : 0;
     const goldColor = pct > 60 ? 'var(--gold)' : pct > 20 ? 'var(--orange)' : '#e07070';
     const resetStr = formatGoldReset(logNpc.resetAt);
@@ -7108,6 +8439,34 @@ function renderMapNpcDetail(npcKey, char) {
         </div>
         <div style="font-size:11px;color:var(--text-dim)">Resets: <span style="color:var(--text)">${resetStr}</span></div>
       </div>`;
+  }
+
+  // Gold cap table (from game data — favor tier → gold cap amount)
+  const { goldTiers: _mapGoldTiers, store: _mapStore, consignment: _mapConsign } = dataLoaded.npcs ? getNpcServiceItemTypes(npcKey) : { goldTiers: [], store: [], consignment: [] };
+  let goldCapHtml = '';
+  if (_mapGoldTiers.length) {
+    const sHdr = `<div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border)">Gold Cap by Favor</div>`;
+    const tierRows = _mapGoldTiers.map(({ favor, gold }) => {
+      const isCurrent = favor === favorLevel;
+      const fc = FAVOR_COLORS[favor];
+      const col = fc ? fc.text : 'var(--text-dim)';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:1px 0${isCurrent?';background:var(--bg3);border-radius:3px;padding:2px 5px;margin:0 -5px':''}">
+        <span style="font-size:10px;min-width:10px;color:${isCurrent?'var(--gold)':'var(--bg3)'}">▶</span>
+        <span style="font-size:11px;min-width:80px;color:${isCurrent?col:'var(--text-dim)'}">${favor}</span>
+        <span style="font-size:11px;${isCurrent?`color:var(--gold);font-weight:600;font-family:'Cinzel',serif`:'color:var(--text-dim)'}">🪙 ${gold.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+    goldCapHtml = `<div style="padding-top:8px;margin-top:8px;border-top:1px solid var(--border)">${sHdr}${tierRows}</div>`;
+  }
+
+  // Item types bought/taken on consignment
+  let storeTypesHtml = '';
+  if (_mapStore.length || _mapConsign.length) {
+    const tagRow = (tags, cls) => `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${tags.map(t=>`<span class="${cls}" style="font-size:10px">${_formatItemTypeName(t)}</span>`).join('')}</div>`;
+    storeTypesHtml = `<div style="padding-top:8px;margin-top:8px;border-top:1px solid var(--border)">
+      ${_mapStore.length ? `<div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Buys &amp; Sells</div>${tagRow(_mapStore,'npc-store-tag')}` : ''}
+      ${_mapConsign.length ? `<div style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;margin-top:${_mapStore.length?8:0}px">Consignment</div>${tagRow(_mapConsign,'npc-consign-tag')}` : ''}
+    </div>`;
   }
 
   // Active quests returnable to this NPC
@@ -7130,6 +8489,8 @@ function renderMapNpcDetail(npcKey, char) {
 
     <div style="margin-bottom:10px">${favorHtml}</div>
     ${vendorHtml}
+    ${goldCapHtml}
+    ${storeTypesHtml}
 
     ${returnableQuests.length ? `
       <div class="map-panel-section" style="margin-top:10px">Returnable Quests</div>
@@ -7250,10 +8611,14 @@ function closeSkillPicker() {
 // ═══════════════════════════════════════════════════════════
 // TOAST
 // ═══════════════════════════════════════════════════════════
-function showToast(msg) {
+function showToast(msg, type) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 2800);
+  t.textContent = msg;
+  t.style.borderColor = type === 'success' ? '#4caf50'
+                      : type === 'warn'    ? '#f0a020'
+                      : '';
+  t.classList.add('show');
+  setTimeout(() => { t.classList.remove('show'); t.style.borderColor = ''; }, 2800);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7664,10 +9029,9 @@ function renderToolsTab() {
   if (!el) return;
   el.innerHTML = `
     <div class="char-tabs" style="margin-bottom:0">
-      <div class="char-tab ${toolsSubTab==='safecracking'?'active':''}" onclick="setToolsSubTab('safecracking')">Safecracking</div>
       <div class="char-tab ${toolsSubTab==='survey'?'active':''}" onclick="setToolsSubTab('survey')">Survey</div>
       <div class="char-tab ${toolsSubTab==='gardening'?'active':''}" onclick="setToolsSubTab('gardening')">Gardening</div>
-      <div class="char-tab ${toolsSubTab==='dice'?'active':''}" onclick="setToolsSubTab('dice')">Dice</div>
+      <div class="char-tab ${toolsSubTab==='safecracking'?'active':''}" onclick="setToolsSubTab('safecracking')">Safecracking</div>
     </div>
     <div id="toolsContent"></div>`;
   const content = document.getElementById('toolsContent');
@@ -7754,6 +9118,24 @@ function surveySetHotkey(id, vkField, modsField) {
 
 function surveyHandleMessage(msg) {
   switch(msg.type) {
+    case 'playerlog': {
+      // Player.log lines forwarded by the survey server's _tail_player_log().
+      // parsePlayerLogLines handles all NPC vendor/favor/inventory updates.
+      const count = parsePlayerLogLines(msg.lines || []);
+      savePlayerLogData();
+      if (_parseLogCharChanged && characters.length > 0) {
+        const matched = characters.find(c => c.charData.Character === currentLogChar);
+        if (matched) { activeCharId = matched.id; sellGiftCharId = matched.id; }
+        renderAll();
+      } else if (count > 0) {
+        if (mainTab === 'favors') renderFavorsTab();
+        if (mainTab === 'tools' && toolsSubTab === 'gardening') renderToolsTab();
+        if (mainTab === 'tools' && toolsSubTab === 'dice') renderToolsTab();
+        if (mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+        if (mainTab === 'settings') renderSettingsTab();
+      }
+      break;
+    }
     case 'shutdown_ack':
       surveyShuttingDown = true;
       if (surveyWs) surveyWs.close();
@@ -7770,6 +9152,14 @@ function surveyHandleMessage(msg) {
       if (msg.player_east != null) surveyConfig.player_east = msg.player_east;
       if (msg.player_south != null) surveyConfig.player_south = msg.player_south;
       surveyCirclePins = [];
+      if (surveySetupActive) surveyMotherloadMode = false;
+      // Restore motherload state from server
+      if (msg.motherload_active != null) surveyMotherloadTracking = msg.motherload_active;
+      if (msg.motherload_slot  != null) surveyMotherloadSlot = msg.motherload_slot;
+      if (msg.motherload_readings) {
+        motherloadReadings = msg.motherload_readings;
+        if (motherloadReadings.length > 0 && !surveySetupActive) surveyMotherloadMode = true;
+      }
       if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
       break;
     case 'survey_detected':
@@ -7833,6 +9223,77 @@ function surveyHandleMessage(msg) {
     case 'sc_state':
       // sc_state from server ignored — local JS solver manages state
       break;
+    case 'motherload_update':
+      motherloadReadings     = msg.readings     || [];
+      motherloadTriangulated = msg.triangulated  || null;
+      surveyMotherloadSuggested = msg.suggested  || [];
+      if (msg.active != null) surveyMotherloadTracking = msg.active;
+      if (msg.slot   != null) surveyMotherloadSlot     = msg.slot;
+      if (msg.warning) showToast(msg.warning, 'warn');
+      // Auto-enter motherload mode when first reading arrives (only if not mid-setup)
+      if (motherloadReadings.length > 0 && !surveySetupActive) surveyMotherloadMode = true;
+      if (mainTab === 'tools' && toolsSubTab === 'survey') {
+        if (surveyMotherloadMode) renderToolsTab();
+        else { _surveyRenderMotherloadPanel(); surveyDrawCanvas(); }
+      }
+      break;
+    case 'favor_gained': {
+      const npcKey = _npcKeyByName(msg.npc_name);
+      const char   = currentLogChar;
+      if (npcKey && char) {
+        if (!playerLogData[char]) playerLogData[char] = { npcs: {}, idMap: {} };
+        const d = playerLogData[char];
+        if (!d.npcs[npcKey]) d.npcs[npcKey] = { loggedAt: Date.now() };
+        const prev = d.npcs[npcKey].exactFavor ?? null;
+        let newVal;
+        if (prev != null) {
+          newVal = prev + msg.amount;
+          d.npcs[npcKey].exactFavor = newVal;
+        } else {
+          const charObj  = characters.find(c => c.charData?.Character === char);
+          const tierName = charObj?.charData?.NPCs?.[npcKey]?.FavorLevel ?? null;
+          const floor    = tierName != null ? (FAVOR_TIER_FLOORS[tierName] ?? 0) : 0;
+          newVal = floor + msg.amount;
+          d.npcs[npcKey].exactFavor = newVal;
+        }
+        d.npcs[npcKey].loggedAt = Date.now();
+        _wsLog(char, `${msg.npc_name}: +${msg.amount.toLocaleString()} favor → ${newVal.toLocaleString()}`);
+        showToast(`↑ ${msg.npc_name} +${msg.amount.toLocaleString()} favor`);
+        savePlayerLogData();
+        if (mainTab === 'favors') renderFavorsTab();
+        if (mainTab === 'storage' && activeCharId === '__sellgift__') renderSellGiftTab();
+      } else if (!npcKey) {
+        // NPC name not found in database — still log it so the user can see it
+        _wsLog(char || '?', `${msg.npc_name}: +${msg.amount.toLocaleString()} favor (NPC not in database)`);
+        showToast(`↑ ${msg.npc_name} +${msg.amount.toLocaleString()} favor`);
+      }
+      break;
+    }
+    case 'xp_gained': {
+      const skill = msg.skill || '?';
+      const xp    = msg.xp   || 0;
+      sessionXp[skill] = (sessionXp[skill] || 0) + xp;
+      // Only push to the rolling window via WS if the browser chat-log watcher
+      // isn't already tracking XP — avoids double-counting when both are active.
+      if (!chatLogFolderHandle) {
+        xpEvents.push({ skill, xp, ts: Date.now() });
+        _xpPruneOld();
+        _saveXpEvents();
+        if (mainTab === 'storage' && activeCharId !== '__sellgift__') {
+          const _xpChar = characters.find(c => c.id === activeCharId);
+          if (_xpChar) renderLeft(_xpChar);
+        }
+      }
+      _wsLog(currentLogChar || '?', `XP: +${xp.toLocaleString()} ${skill} (session: ${sessionXp[skill].toLocaleString()})`);
+      break;
+    }
+    case 'level_up': {
+      const skill = msg.skill || '?';
+      const level = msg.level || 0;
+      _wsLog(currentLogChar || '?', `🎉 ${skill} reached level ${level}!`);
+      showToast(`🎉 ${skill} reached level ${level}!`, 'success');
+      break;
+    }
     case 'status':
     case 'error':
     case 'pong':
@@ -7840,6 +9301,30 @@ function surveyHandleMessage(msg) {
       if (mainTab === 'tools' && toolsSubTab === 'survey') surveyUpdateStatus();
       break;
   }
+}
+
+function _surveyRenderMotherloadPanel() {
+  const panel = document.getElementById('motherloadPanel');
+  if (!panel) return;
+  if (motherloadReadings.length === 0 || surveyMotherloadMode) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  const need = Math.max(0, 3 - motherloadReadings.length);
+  const rows = motherloadReadings.map((r, i) =>
+    `<span style="font-size:11px;color:var(--text-dim)">${i+1}. ${r.east.toFixed(0)} E / ${r.south.toFixed(0)} S — ${r.distance.toLocaleString()} m</span>`
+  ).join('');
+  const resultHtml = motherloadTriangulated
+    ? `<span style="font-size:12px;color:#ff9090;font-weight:bold">✕ ${motherloadTriangulated.east.toFixed(0)} E / ${motherloadTriangulated.south.toFixed(0)} S</span>`
+    : `<span style="font-size:11px;color:var(--text-dim)">Need ${need} more reading${need!==1?'s':''} from a different spot</span>`;
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);white-space:nowrap">Motherload (${motherloadReadings.length}/3)</span>
+      ${rows}
+      ${resultHtml}
+      <button class="ctx-btn" style="padding:1px 10px;font-size:10px;margin-left:auto" onclick="surveySend({type:'cmd_motherload_reset'})">Reset</button>
+    </div>`;
 }
 
 function surveyUpdateStatus() {
@@ -8147,12 +9632,16 @@ function renderSurveyTab(targetEl) {
 
   <!-- Toolbar -->
   <div style="display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">
-    ${!surveySetupActive
-      ? `<button class="sync-btn" onclick="surveySend({type:'cmd_start_setup'})" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">▶ Setup Surveying</button>`
-      : `<button class="sync-btn danger" onclick="surveySend({type:'cmd_stop_setup'})">⏹ Stop Setup</button>`
+    ${surveyMotherloadMode
+      ? `<button class="sync-btn" onclick="surveyExitMotherload()" style="color:var(--text-dim)">← Regular Survey</button>
+         <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--orange);padding:2px 6px;border:1px solid rgba(200,128,32,.35);border-radius:4px;background:rgba(200,128,32,.08)">⚐ Motherload Mode</span>`
+      : (!surveySetupActive
+        ? `<button class="sync-btn" onclick="surveySend({type:'cmd_start_setup'})" style="background:var(--gold-dim);border-color:var(--gold);color:var(--gold)">▶ Setup Surveying</button>
+           <button class="sync-btn" onclick="surveyEnterMotherload()" style="border-color:var(--orange);color:var(--orange)">⚐ Motherload</button>`
+        : `<button class="sync-btn danger" onclick="surveySend({type:'cmd_stop_setup'})">⏹ Stop Setup</button>`)
     }
-    <button class="sync-btn" onclick="surveySend({type:'cmd_recalculate_route'})">↺ Recalculate Route</button>
-    <button class="sync-btn" onclick="surveySend({type:'cmd_clear_area'})" style="color:var(--text-dim)">✕ Clear Area</button>
+    ${!surveyMotherloadMode ? `<button class="sync-btn" onclick="surveySend({type:'cmd_recalculate_route'})">↺ Recalculate Route</button>
+    <button class="sync-btn" onclick="surveySend({type:'cmd_clear_area'})" style="color:var(--text-dim)">✕ Clear Area</button>` : ''}
     <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
       <span style="font-size:11px;color:var(--text-dim)">Map:</span>
       <select id="surveyMapAreaSel"
@@ -8163,6 +9652,9 @@ function renderSurveyTab(targetEl) {
       </select>
     </div>
   </div>
+
+  <!-- Motherload triangulation panel — hidden until readings arrive -->
+  <div id="motherloadPanel" style="display:none;padding:6px 14px;background:rgba(255,140,0,.07);border-bottom:1px solid rgba(255,140,0,.25)"></div>
 
   <!-- Body -->
   <div style="display:flex;flex:1;overflow:hidden">
@@ -8289,6 +9781,7 @@ function renderSurveyTab(targetEl) {
 </div>`;
 
   surveyRenderList();
+  _surveyRenderMotherloadPanel();
   // Size outer container to fill available viewport, then size canvas and draw
   requestAnimationFrame(() => {
     surveySizeContainer();
@@ -8311,11 +9804,143 @@ function surveySizeContainer() {
   outer.style.height = Math.max(200, window.innerHeight - top) + 'px';
 }
 
+// ── Motherload mode helpers ────────────────────────────────
+
+function surveyEnterMotherload() {
+  surveyMotherloadMode = true;
+  surveySend({type: 'cmd_motherload_reset'});
+  motherloadReadings = [];
+  motherloadTriangulated = null;
+  surveyMotherloadSuggested = [];
+  surveyMotherloadSlot = 0;
+  // Start overlays if survey server is connected
+  if (surveyConnected) {
+    surveySend({type: 'cmd_motherload_start'});
+  }
+  if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
+}
+
+function surveyExitMotherload() {
+  surveyMotherloadMode = false;
+  if (surveyConnected && surveyMotherloadTracking) {
+    surveySend({type: 'cmd_motherload_stop'});
+  }
+  if (mainTab === 'tools' && toolsSubTab === 'survey') renderToolsTab();
+}
+
+function _surveyRenderMotherloadList(el) {
+  const n    = motherloadReadings.length;
+  const need = Math.max(0, 3 - n);
+  const done = !!motherloadTriangulated;
+
+  // ── Tracking toggle ──────────────────────────────────────
+  const trackingHtml = surveyConnected ? `
+    <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      ${surveyMotherloadTracking
+        ? `<span style="font-size:11px;color:#5a9960">● Overlays active</span>
+           <button class="ctx-btn" style="margin-left:auto;font-size:10px;padding:2px 8px;color:var(--text-dim)"
+             onclick="surveySend({type:'cmd_motherload_stop'})">Hide</button>`
+        : `<span style="font-size:11px;color:var(--text-dim)">○ Overlays off</span>
+           <button class="ctx-btn" style="margin-left:auto;font-size:10px;padding:2px 8px;color:var(--green)"
+             onclick="surveySend({type:'cmd_motherload_start'})">▶ Start Tracking</button>`
+      }
+    </div>` : `
+    <div style="padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-dim)">
+      Survey server not connected — position tracking unavailable
+    </div>`;
+
+  // ── Step rows ─────────────────────────────────────────────
+  const steps = [1, 2, 3];
+  const stepsHtml = steps.map(step => {
+    const r = motherloadReadings[step - 1];
+    const isActive = !done && n === step - 1;  // waiting for this step
+    const isDone   = !!r;
+    const icon     = isDone ? `<span style="color:var(--green);font-size:13px">✓</span>`
+                            : isActive ? `<span style="color:var(--orange);font-size:13px">→</span>`
+                            : `<span style="color:var(--border-light);font-size:11px">${step}</span>`;
+    const label    = isDone
+      ? `<div style="font-size:12px;color:var(--text)">${r.east.toFixed(0)} E / ${r.south.toFixed(0)} S</div>
+         <div style="font-size:11px;color:var(--text-dim)">${r.distance.toLocaleString()} m away</div>`
+      : isActive
+        ? `<div style="font-size:12px;color:var(--orange)">Position ${step}</div>
+           <div style="font-size:11px;color:var(--text-dim)">${
+             step === 1
+               ? (surveyMotherloadTracking ? `Stand here and press the hotkey` : `Start tracking first`)
+               : `Move to the marked spot on the map, then press hotkey`
+           }</div>`
+        : `<div style="font-size:12px;color:var(--text-dim)">Position ${step}</div>
+           <div style="font-size:11px;color:var(--text-dim)">waiting…</div>`;
+
+    // Use Maps button for the active step
+    const useBtn = isActive && surveyConnected && surveyMotherloadTracking
+      ? `<button class="ctx-btn" style="font-size:10px;padding:2px 9px;color:var(--gold)"
+           onclick="surveySend({type:'cmd_motherload_use_all'})">⚐ Use Maps</button>`
+      : '';
+
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);
+                        background:${isActive ? 'rgba(200,128,32,.06)' : ''}">
+      <div style="width:20px;text-align:center;padding-top:2px;flex-shrink:0">${icon}</div>
+      <div style="flex:1">${label}</div>
+      ${useBtn}
+    </div>`;
+  }).join('');
+
+  // ── Result ────────────────────────────────────────────────
+  let resultHtml = '';
+  if (done) {
+    resultHtml = `
+      <div style="margin:12px 14px;padding:12px 14px;background:rgba(255,60,60,.08);border:1px solid rgba(255,100,100,.3);border-radius:6px;text-align:center">
+        <div style="font-family:'Cinzel',serif;font-size:10px;color:var(--text-dim);letter-spacing:.12em;margin-bottom:7px">TREASURE LOCATION</div>
+        <div style="font-size:20px;color:#ff8888;font-weight:bold">✕ ${motherloadTriangulated.east.toFixed(0)} E / ${motherloadTriangulated.south.toFixed(0)} S</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:5px">${n} readings used</div>
+      </div>`;
+  } else if (n > 0 && need > 0) {
+    resultHtml = `
+      <div style="padding:8px 14px;font-size:11px;color:var(--text-dim);text-align:center">
+        Need ${need} more reading${need !== 1 ? 's' : ''} from different position${need !== 1 ? 's' : ''}
+      </div>`;
+  }
+
+  // ── Suggested map hint ────────────────────────────────────
+  const suggestHint = !done && surveyMotherloadSuggested.length > 0
+    ? `<div style="padding:6px 14px 4px;font-size:11px;color:var(--text-dim)">
+         ${surveyMotherloadSuggested.length === 1
+           ? '↑ Marked on map — move there for best triangulation'
+           : '↑ Move to any marked spot on the map'}
+       </div>`
+    : '';
+
+  // ── Bottom controls ───────────────────────────────────────
+  const ctrlHtml = n > 0 ? `
+    <div style="padding:10px 14px;display:flex;gap:6px">
+      <button class="sync-btn" style="flex:1;color:var(--text-dim);font-size:11px"
+        onclick="surveySend({type:'cmd_motherload_reset'});motherloadReadings=[];motherloadTriangulated=null;surveyMotherloadSuggested=[];surveyMotherloadSlot=0;surveyRenderList();surveyDrawCanvas()">
+        ↺ Reset
+      </button>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div style="padding:10px 14px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--orange);flex:1;letter-spacing:.05em">⚐ Motherload Survey</span>
+      <span style="font-size:10px;color:var(--text-dim)">${n}/3${n >= 3 ? '+' : ''}</span>
+    </div>
+    ${trackingHtml}
+    ${stepsHtml}
+    ${resultHtml}
+    ${suggestHint}
+    ${ctrlHtml}`;
+}
+
 // ── Survey list ───────────────────────────────────────────
 
 function surveyRenderList() {
   const el = document.getElementById('surveyList');
   if (!el) return;
+
+  if (surveyMotherloadMode) {
+    _surveyRenderMotherloadList(el);
+    return;
+  }
 
   if (!surveyLocations.length) {
     el.innerHTML = `<div style="padding:20px 16px;color:var(--text-dim);font-size:12px;text-align:center">
@@ -8493,6 +10118,82 @@ function _surveyDrawCalibrated(ctx, W, H, cal, mapImg) {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+  }
+
+  // Motherload distance circles
+  if (motherloadReadings.length > 0) {
+    const scaleX = W / Math.abs(cal.x_right - cal.x_left);
+    const scaleY = H / Math.abs(cal.z_top   - cal.z_bottom);
+    const metersPx = (m) => m * (scaleX + scaleY) / 2;
+    ctx.lineWidth = 2;
+    motherloadReadings.forEach((r, i) => {
+      const [cx, cy] = toC(r.east, r.south);
+      const radius = metersPx(r.distance);
+      // Dashed orange circle
+      ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,150,0,0.45)';
+      ctx.setLineDash([7, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Origin dot
+      ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,150,0,0.8)';
+      ctx.fill();
+      // Distance label
+      ctx.fillStyle = 'rgba(255,200,100,0.9)';
+      ctx.font = '11px Crimson Pro, serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${r.distance.toLocaleString()}m`, cx + 6, cy - 4);
+    });
+    // Suggested next-position markers (shown when not yet triangulated)
+    if (!motherloadTriangulated && surveyMotherloadSuggested.length > 0) {
+      surveyMotherloadSuggested.forEach((pos, i) => {
+        const [sx, sy] = toC(pos.east, pos.south);
+        const isTarget = surveyMotherloadSuggested.length === 1; // single best spot
+        const cr = isTarget ? 14 : 10;
+        // Outer ring
+        ctx.beginPath(); ctx.arc(sx, sy, cr, 0, Math.PI * 2);
+        ctx.strokeStyle = isTarget ? 'rgba(100,220,100,0.8)' : 'rgba(255,210,60,0.65)';
+        ctx.lineWidth = isTarget ? 2.5 : 1.5;
+        ctx.setLineDash(isTarget ? [] : [4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Inner dot
+        ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = isTarget ? 'rgba(100,220,100,0.9)' : 'rgba(255,210,60,0.85)';
+        ctx.fill();
+        // Compass label for 4-point suggestion
+        if (surveyMotherloadSuggested.length === 4) {
+          const labels = ['N','E','S','W'];
+          ctx.fillStyle = 'rgba(255,220,80,0.9)';
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(labels[i], sx, sy - cr - 7);
+        } else if (isTarget) {
+          ctx.fillStyle = 'rgba(100,220,100,0.9)';
+          ctx.font = '11px Crimson Pro, serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText('go here', sx, sy + cr + 3);
+        }
+      });
+    }
+
+    // Triangulated target
+    if (motherloadTriangulated) {
+      const [tx, ty] = toC(motherloadTriangulated.east, motherloadTriangulated.south);
+      const r = 11, d = r * 0.65;
+      ctx.strokeStyle = 'rgba(255,60,60,0.9)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([]);
+      [[tx-r,ty,tx+r,ty],[tx,ty-r,tx,ty+r],[tx-d,ty-d,tx+d,ty+d],[tx-d,ty+d,tx+d,ty-d]].forEach(([x1,y1,x2,y2]) => {
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      });
+      ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,60,60,0.85)';
+      ctx.fill();
+    }
   }
 }
 
@@ -9061,12 +10762,20 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadWOCompleted();
   await loadPinnedSkills();
   await loadPinnedNpcs();
+  await loadPinnedItems();
+  await loadItemNotes();
   await loadPlayerLogData();
   await resumePlayerLogWatch();
   initWsBridge();
 
   // Restore survey tab visibility preference
   if (localStorage.getItem('showSurveyTab') === '1') setSurveyTabVisible(true, false);
+
+  // Restore XP rolling-window events (last ~2h, older entries already pruned)
+  _loadXpEvents();
+
+  // Restore chat log folder watcher (XP tracking)
+  await tryRestoreChatLogFolder();
 
   // Try restore folder (will also load game data files)
   await tryRestoreFolder();

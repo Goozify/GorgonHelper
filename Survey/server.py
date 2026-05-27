@@ -7,6 +7,7 @@ events stream to the browser over ws://localhost:8765.
 """
 import asyncio
 import ctypes
+import math
 import time
 import http.server
 import json
@@ -16,7 +17,9 @@ import threading
 import urllib.request
 from dataclasses import asdict
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
+
+import numpy as np
 
 import websockets
 
@@ -155,6 +158,90 @@ def _loc_to_dict(loc: SurveyLocation) -> dict:
     return d
 
 
+def _triangulate_circles(readings: List[Tuple[float, float, int]]) -> Optional[dict]:
+    """Triangulate the point at the centre of N distance circles.
+
+    Each reading is (east, south, distance_meters).  Uses the linearisation
+    trick: subtracting circle equation 0 from each other circle eliminates the
+    quadratic terms, leaving a linear system that can be solved with lstsq.
+
+    Returns {"east": e, "south": s} or None when there are fewer than 3
+    readings or the positions are nearly collinear.
+    """
+    if len(readings) < 3:
+        return None
+    e0, s0, r0 = readings[0]
+    A_rows, b_rows = [], []
+    for (ei, si, ri) in readings[1:]:
+        A_rows.append([2.0 * (e0 - ei), 2.0 * (s0 - si)])
+        b_rows.append(float(ri**2 - r0**2 - ei**2 + e0**2 - si**2 + s0**2))
+    A = np.array(A_rows, dtype=float)
+    b = np.array(b_rows, dtype=float)
+    try:
+        result, _, rank, _ = np.linalg.lstsq(A, b, rcond=None)
+        if rank < 2:
+            return None  # Collinear — cannot triangulate
+        return {"east": float(result[0]), "south": float(result[1])}
+    except Exception:
+        return None
+
+
+def _circle_intersections(
+    e1: float, s1: float, r1: int,
+    e2: float, s2: float, r2: int,
+) -> List[Tuple[float, float]]:
+    """Return up to two intersection points of two circles, or [] if none."""
+    dx, dy = e2 - e1, s2 - s1
+    dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 1e-6 or dist > r1 + r2 or dist < abs(r1 - r2):
+        return []
+    a = (r1 ** 2 - r2 ** 2 + dist ** 2) / (2.0 * dist)
+    h_sq = r1 ** 2 - a ** 2
+    if h_sq < 0:
+        return []
+    h = math.sqrt(h_sq)
+    mx = e1 + a * dx / dist
+    my = s1 + a * dy / dist
+    return [
+        (mx + h * dy / dist, my - h * dx / dist),
+        (mx - h * dy / dist, my + h * dx / dist),
+    ]
+
+
+def _compute_motherload_suggested(readings: List[Tuple[float, float, int]]) -> list:
+    """Return a list of {east, south} waypoints suggesting where to move for the
+    next motherload measurement.
+
+    After 1 reading: four compass-point suggestions at ~d/3 away.
+    After 2 readings: midpoint between the two circle intersections (ideal
+    third position for unambiguous triangulation).
+    """
+    if not readings:
+        return []
+    if len(readings) == 1:
+        e, s, d = readings[0]
+        step = max(d / 3.0, 80.0)
+        return [
+            {"east": float(e),        "south": float(s - step)},  # north
+            {"east": float(e + step), "south": float(s)        },  # east
+            {"east": float(e),        "south": float(s + step) },  # south
+            {"east": float(e - step), "south": float(s)        },  # west
+        ]
+    if len(readings) >= 2:
+        e1, s1, r1 = readings[0]
+        e2, s2, r2 = readings[1]
+        pts = _circle_intersections(e1, s1, r1, e2, s2, r2)
+        if len(pts) == 2:
+            mid_e = (pts[0][0] + pts[1][0]) / 2.0
+            mid_s = (pts[0][1] + pts[1][1]) / 2.0
+            return [{"east": float(mid_e), "south": float(mid_s)}]
+        # Circles don't overlap — fall back to a perpendicular offset from last reading
+        e, s, d = readings[-1]
+        step = max(d / 3.0, 80.0)
+        return [{"east": float(e), "south": float(s - step)}]
+    return []
+
+
 class SurveyServer:
     def __init__(self):
         self.config = Config.load()
@@ -168,6 +255,15 @@ class SurveyServer:
         # Register callbacks so the overlay fires into our broadcast loop
         self.map_overlay.set_position_callback(self._on_player_pos)
         self.map_overlay.set_pin_callback(self._on_circle_pin)
+
+        # Always-on chat watcher for favor gain tracking (independent of survey sessions)
+        self._favor_watcher: Optional[ChatWatcher] = None
+
+        # Motherload survey triangulation state
+        self._motherload_readings: List[Tuple[float, float, int]] = []  # (east, south, dist_m)
+        self._motherload_active:   bool = False              # map+inv overlays shown for ML
+        self._motherload_slot:     int  = 0                  # next inventory slot to try
+        self._motherload_event:    Optional[asyncio.Event] = None  # woken by motherload_distance
 
         # Chat watcher (created on start_setup, None otherwise)
         self.chat_watcher: Optional[ChatWatcher] = None
@@ -333,9 +429,28 @@ class SurveyServer:
         log.info("Single-use hotkey registered (VK 0x%02X mods=0x%X)",
                  self.config.single_use_hotkey_vk, self.config.single_use_hotkey_mods)
 
+        # Start always-on favor watcher — tracks "You gained X favor with NPC" chat lines
+        # regardless of whether a survey session is active.
+        self._favor_watcher = ChatWatcher(self.config.chat_log_dir, skip_existing=True)
+        self._favor_watcher.favor_gained.connect(
+            lambda name, amt: asyncio.ensure_future(self._on_favor_gained(name, amt))
+        )
+        self._favor_watcher.motherload_distance.connect(
+            lambda d: asyncio.ensure_future(self._on_motherload_distance(d))
+        )
+        self._favor_watcher.xp_gained.connect(
+            lambda skill, xp: asyncio.ensure_future(self._on_xp_gained(skill, xp))
+        )
+        self._favor_watcher.level_up.connect(
+            lambda skill, lvl: asyncio.ensure_future(self._on_level_up(skill, lvl))
+        )
+        self._favor_watcher.start()
+        log.info("Favor watcher started (chat log dir: %s)", self.config.chat_log_dir)
+
         log.info("Starting WebSocket server on ws://%s:%d", WS_HOST, WS_PORT)
         async with websockets.serve(self._handle_client, WS_HOST, WS_PORT):
             log.info("Survey Helper running — waiting for browser connection")
+            asyncio.ensure_future(self._tail_player_log())
             await self._shutdown_event.wait()  # run until cmd_shutdown sets this
 
         log.info("WebSocket server closed — exiting")
@@ -417,6 +532,10 @@ class SurveyServer:
             "route_id_order": self._route_id_order,
             "slot_labels": slot_labels_str,
             "status": "Connected — Survey Helper running",
+            "motherload_active": self._motherload_active,
+            "motherload_slot":   self._motherload_slot,
+            "motherload_readings": [{"east": e, "south": s, "distance": d}
+                                    for e, s, d in self._motherload_readings],
         }
 
     async def _send_state_full(self, ws=None):
@@ -494,6 +613,21 @@ class SurveyServer:
             await self._sc_record(guess, exact, misplaced)
         elif t == "sc_undo":
             await self._sc_undo()
+        elif t == "cmd_motherload_reset":
+            self._motherload_readings = []
+            self._motherload_slot = 0
+            self.map_overlay.set_motherload_data([], None)
+            await self.broadcast({
+                "type": "motherload_update",
+                "readings": [], "triangulated": None, "suggested": [],
+                "active": self._motherload_active, "slot": self._motherload_slot,
+            })
+        elif t == "cmd_motherload_start":
+            await self._motherload_start()
+        elif t == "cmd_motherload_stop":
+            await self._motherload_stop()
+        elif t == "cmd_motherload_use_all":
+            asyncio.ensure_future(self._motherload_use_all())
         elif t == "cmd_ping":
             await self._send(ws, {"type": "pong"})
         elif t == "cmd_shutdown":
@@ -800,6 +934,12 @@ class SurveyServer:
         if not self._setup_complete:
             return  # only track during route mode
         now = time.monotonic()
+        # Deduplicate: the game emits both "X added to inventory." and "X collected!"
+        # for the same survey item, both within milliseconds of each other.
+        # Skip if an identical (name, qty) entry was buffered within the last 300 ms.
+        if any(n == item_name and q == qty and now - t < 0.3
+               for t, n, q in self._loot_buffer):
+            return
         self._loot_buffer.append((now, item_name, qty))
         # Prune entries older than 5 seconds — drain window is ≤2 s so this
         # is just a safety margin to keep the buffer from growing unbounded.
@@ -822,6 +962,218 @@ class SurveyServer:
 
     async def _on_watch_error(self, msg: str):
         await self.broadcast({"type": "error", "message": f"Chat watcher: {msg}"})
+
+    async def _on_favor_gained(self, npc_name: str, amount: int):
+        log.debug("FAVOR  npc=%r  gained=%d", npc_name, amount)
+        await self.broadcast({
+            "type": "favor_gained",
+            "npc_name": npc_name,
+            "amount": amount,
+        })
+
+    async def _on_xp_gained(self, skill: str, xp: int):
+        log.debug("XP  skill=%r  xp=%d", skill, xp)
+        await self.broadcast({
+            "type": "xp_gained",
+            "skill": skill,
+            "xp": xp,
+        })
+
+    async def _on_level_up(self, skill: str, new_level: int):
+        log.info("LEVEL UP  skill=%r  level=%d", skill, new_level)
+        await self.broadcast({
+            "type": "level_up",
+            "skill": skill,
+            "level": new_level,
+        })
+
+    async def _tail_player_log(self):
+        """Tail Player.log and forward relevant lines to connected browser clients.
+
+        Starts from the END of the current log so historical lines are not
+        replayed — only new game events that occur while the server is running
+        reach the browser.  The browser's parsePlayerLogLines() handles the
+        actual parsing; we just filter for lines that contain 'Process' to
+        drop the high-volume combat/physics noise.
+        """
+        player_log_path = os.path.join(
+            os.path.dirname(self.config.chat_log_dir), "Player.log"
+        )
+        if not os.path.exists(player_log_path):
+            log.info("Player.log not found at %s — live NPC updates disabled", player_log_path)
+            return
+        log.info("Tailing Player.log: %s", player_log_path)
+        try:
+            with open(player_log_path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(0, 2)  # skip existing; start from current end of file
+                while not self._shutdown_event.is_set():
+                    batch = []
+                    while True:
+                        line = f.readline()
+                        if not line:
+                            break
+                        s = line.strip()
+                        # Only forward lines that contain game-state Process* calls;
+                        # this drops combat spam, download messages, entity noise, etc.
+                        if s and "Process" in s:
+                            batch.append(s)
+                    if batch:
+                        log.debug("Player log: forwarding %d lines", len(batch))
+                        await self.broadcast({"type": "playerlog", "lines": batch})
+                    await asyncio.sleep(0.3)
+        except Exception as exc:
+            log.error("Player log tailer error: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Motherload mode — overlays + guided workflow
+    # ------------------------------------------------------------------
+
+    async def _motherload_start(self):
+        """Show map and inventory overlays for motherload mode (player position tracking)."""
+        self._motherload_active = True
+
+        inv = self.config.inventory
+        self.inv_overlay.configure(
+            inv.screen_x, inv.screen_y,
+            inv.slot_width, inv.slot_height,
+            inv.grid_cols, inv.grid_rows, inv.slot_gap,
+            inv.padding_left, inv.padding_top,
+        )
+        self.inv_overlay.set_current_slot(self._motherload_slot)
+        self.inv_overlay.set_overlay_visible(True)
+
+        if self.config.map_capture.w > 0:
+            self.map_overlay.configure_region(
+                self.config.map_capture.x, self.config.map_capture.y,
+                self.config.map_capture.w, self.config.map_capture.h,
+            )
+        self.map_overlay.set_visible(True)
+
+        log.info("Motherload mode started — overlays visible")
+        await self.broadcast({
+            "type": "motherload_update",
+            "readings": [{"east": e, "south": s, "distance": d}
+                         for e, s, d in self._motherload_readings],
+            "triangulated": _triangulate_circles(self._motherload_readings),
+            "suggested":    _compute_motherload_suggested(self._motherload_readings),
+            "active":       True,
+            "slot":         self._motherload_slot,
+        })
+        await self.broadcast({"type": "status",
+                               "message": "Motherload mode — overlays active, position tracking on"})
+
+    async def _motherload_stop(self):
+        """Hide overlays for motherload mode."""
+        self._motherload_active = False
+        self.inv_overlay.set_overlay_visible(False)
+        # Only hide map overlay if normal survey isn't also using it
+        if not self._surveying:
+            self.map_overlay.set_visible(False)
+        log.info("Motherload mode stopped — overlays hidden")
+        await self.broadcast({
+            "type": "motherload_update",
+            "readings": [{"east": e, "south": s, "distance": d}
+                         for e, s, d in self._motherload_readings],
+            "triangulated": _triangulate_circles(self._motherload_readings),
+            "suggested":    [],
+            "active":       False,
+            "slot":         self._motherload_slot,
+        })
+
+    async def _motherload_use_all(self):
+        """Click inventory slots in sequence until a motherload_distance reading arrives.
+
+        Starts at _motherload_slot and tries each slot up to the configured grid size.
+        When a chat confirmation fires (_motherload_event is set), the reading is
+        recorded by _on_motherload_distance and the slot counter advances.
+        """
+        if not self._motherload_active or self._auto_use_active:
+            return
+
+        inv = self.config.inventory
+        total_slots = inv.grid_cols * inv.grid_rows
+
+        await self.broadcast({"type": "status", "message": "Motherload: using map…"})
+        log.info("MOTHERLOAD-USE  starting from slot %d", self._motherload_slot)
+
+        reading_received = False
+        for slot in range(self._motherload_slot, total_slots):
+            self.inv_overlay.set_current_slot(slot)
+            x, y = self._slot_screen_center(slot)
+
+            self._motherload_event = asyncio.Event()
+            self._simulate_double_click(x, y)
+            log.debug("MOTHERLOAD-USE  clicked slot %d at (%d,%d)", slot, x, y)
+
+            try:
+                await asyncio.wait_for(self._motherload_event.wait(), timeout=7.0)
+                # Reading received — _on_motherload_distance already recorded it
+                self._motherload_slot = slot + 1
+                self.inv_overlay.set_current_slot(self._motherload_slot)
+                reading_received = True
+                log.info("MOTHERLOAD-USE  reading confirmed at slot %d", slot)
+                break
+            except asyncio.TimeoutError:
+                log.debug("MOTHERLOAD-USE  no chat response at slot %d, trying next", slot)
+
+        self._motherload_event = None
+
+        if reading_received:
+            n = len(self._motherload_readings)
+            if n < 3:
+                await self.broadcast({"type": "status",
+                                       "message": f"Motherload: reading {n}/3 — move to a new position, then press the hotkey again"})
+            else:
+                await self.broadcast({"type": "status",
+                                       "message": "Motherload: triangulation complete!"})
+        else:
+            await self.broadcast({"type": "status",
+                                   "message": "Motherload: no survey item found — check inventory slots in Settings"})
+
+    # ------------------------------------------------------------------
+
+    async def _on_motherload_distance(self, distance: int):
+        # Wake any pending _motherload_use_all loop waiting for chat confirmation
+        if self._motherload_event and not self._motherload_event.is_set():
+            self._motherload_event.set()
+
+        east  = self.config.player_east
+        south = self.config.player_south
+        if east == 0.0 and south == 0.0:
+            log.warning("MOTHERLOAD dist=%dm — player position is (0,0), not yet tracked", distance)
+            await self.broadcast({
+                "type": "motherload_update",
+                "readings": [{"east": e, "south": s, "distance": d}
+                             for e, s, d in self._motherload_readings],
+                "triangulated": None,
+                "suggested": [],
+                "active": self._motherload_active,
+                "slot": self._motherload_slot,
+                "warning": "Player position not yet tracked — move around so the map overlay can detect your arrow.",
+            })
+            return
+        # Deduplicate: ignore if we already have a reading very close to this spot
+        for re, rs, _ in self._motherload_readings:
+            if abs(re - east) < 15 and abs(rs - south) < 15:
+                log.debug("MOTHERLOAD dist=%dm — too close to existing reading, skipping", distance)
+                return
+        self._motherload_readings.append((east, south, distance))
+        log.info("MOTHERLOAD reading #%d: (%.0f E, %.0f S) dist=%dm",
+                 len(self._motherload_readings), east, south, distance)
+        triangulated = _triangulate_circles(self._motherload_readings)
+        if triangulated:
+            log.info("MOTHERLOAD triangulated: (%.0f E, %.0f S)", triangulated["east"], triangulated["south"])
+        suggested = _compute_motherload_suggested(self._motherload_readings) if not triangulated else []
+        self.map_overlay.set_motherload_data(self._motherload_readings, triangulated)
+        await self.broadcast({
+            "type": "motherload_update",
+            "readings": [{"east": e, "south": s, "distance": d}
+                         for e, s, d in self._motherload_readings],
+            "triangulated": triangulated,
+            "suggested":    suggested,
+            "active":       self._motherload_active,
+            "slot":         self._motherload_slot,
+        })
 
     # ------------------------------------------------------------------
     # Inventory double-click  (Win32 hook → asyncio)
@@ -1017,10 +1369,15 @@ class SurveyServer:
     async def _on_single_use_press(self):
         """Use the current survey slot once.
 
-        Setup mode:  clicks _current_scan_slot (the next un-scanned slot).
-        Route mode:  clicks the inventory_slot of the first unvisited survey
-                     in route order.
+        Motherload mode: triggers _motherload_use_all() to scan from current slot.
+        Setup mode:      clicks _current_scan_slot (the next un-scanned slot).
+        Route mode:      clicks the inventory_slot of the first unvisited survey.
         """
+        # Motherload mode takes priority
+        if self._motherload_active:
+            asyncio.ensure_future(self._motherload_use_all())
+            return
+
         # Active setup: _surveying=True, _setup_complete=False
         # Route mode:   _surveying=False, _setup_complete=True
         in_setup = self._surveying and not self._setup_complete
@@ -1350,6 +1707,95 @@ class SurveyServer:
             "type": "circle_pin_added",
             "pixel_x": cx, "pixel_y": cy,
             "count": len(self.map_overlay._circle_pins),
+        }))
+
+        # ------------------------------------------------------------------
+        # Single-reading pixel-to-meter calibration (wiki cal path)
+        # When we have area calibration loaded we can convert the circle's
+        # pixel position back to world coordinates.  Comparing that with the
+        # player position derived from the chat distance vector gives us a
+        # corrected absolute player position — bypassing the possibly-wrong
+        # config.player_east/south values that cause the 200 m offset.
+        # ------------------------------------------------------------------
+        self._try_single_reading_calibration(cx, cy)
+
+    def _try_single_reading_calibration(self, cx: int, cy: int):
+        """Use the latest circle pin + its chat delta to correct player position.
+
+        Requires:
+        - Area calibration is loaded (wiki cal JSON) so pixel_to_world works.
+        - A matching SurveyLocation exists for this pin (index-based match).
+        - The arrow was detected at the time of the pin so we can log scale.
+        Does nothing (silently) if any precondition is missing.
+        """
+        # Need wiki-based area calibration
+        circle_world = self.map_overlay.pixel_to_world(cx, cy)
+        if circle_world is None:
+            return
+
+        # Match pin to location by index (pins appended in order, one per survey)
+        all_locs = self.store.get_all(self.config.active_area)
+        pin_idx  = len(self.map_overlay._circle_pins) - 1
+        if pin_idx < 0 or pin_idx >= len(all_locs):
+            return
+
+        loc = all_locs[pin_idx]
+        # Bail out if no meaningful chat distance was recorded (both zero = no chat hit)
+        if not (loc.east_relative or loc.south_relative):
+            return
+
+        # Corrected absolute player position = where the survey circle is in
+        # world coords minus the chat-reported relative offset to that item.
+        corrected_east  = circle_world[0] - loc.east_relative
+        corrected_south = circle_world[1] - loc.south_relative
+
+        prev_east  = self.config.player_east
+        prev_south = self.config.player_south
+        delta = ((corrected_east - prev_east) ** 2 +
+                 (corrected_south - prev_south) ** 2) ** 0.5
+
+        # Log the measured pixel-per-meter scale for this reading
+        arrow_px = self.map_overlay._arrow_px
+        arrow_py = self.map_overlay._arrow_py
+        if arrow_px is not None and arrow_py is not None:
+            pix_dist  = ((cx - arrow_px) ** 2 + (cy - arrow_py) ** 2) ** 0.5
+            world_dist = (loc.east_relative ** 2 + loc.south_relative ** 2) ** 0.5
+            if world_dist > 0:
+                scale = pix_dist / world_dist
+                log.info("Single-reading cal: scale=%.4f px/m  circle_world=(%.1f E, %.1f S)  "
+                         "corrected_player=(%.1f E, %.1f S)  delta=%.1f m",
+                         scale, circle_world[0], circle_world[1],
+                         corrected_east, corrected_south, delta)
+
+        if delta < 5:
+            # Already accurate — no correction needed
+            return
+
+        log.info("Single-reading calibration: correcting player pos by %.1f m  "
+                 "(%.1f E, %.1f S) → (%.1f E, %.1f S)",
+                 delta, prev_east, prev_south, corrected_east, corrected_south)
+        self.config.player_east  = corrected_east
+        self.config.player_south = corrected_south
+
+        # Update any absolute coords already recorded for this and earlier locs
+        # that were computed from the wrong player position.
+        for i, l in enumerate(all_locs):
+            if l.east_relative is None or l.south_relative is None:
+                continue
+            new_abs_east  = corrected_east  + l.east_relative
+            new_abs_south = corrected_south + l.south_relative
+            if l.east_absolute is not None:
+                old_e = l.east_absolute
+                old_s = l.south_absolute
+                log.debug("  loc #%d  abs (%.0f E, %.0f S) → (%.0f E, %.0f S)",
+                          l.id, old_e, old_s, new_abs_east, new_abs_south)
+            l.east_absolute  = new_abs_east
+            l.south_absolute = new_abs_south
+
+        asyncio.ensure_future(self.broadcast({
+            "type": "status",
+            "message": (f"📍 Player position corrected by {delta:.0f} m via wiki calibration — "
+                        f"surveys re-anchored."),
         }))
 
     # ------------------------------------------------------------------

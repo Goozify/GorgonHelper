@@ -106,9 +106,14 @@ class GameMapOverlay(QWidget):
         self._locations: List[SurveyLocation] = []
         self._route_order: List[int] = []  # indices into _locations
 
-        # Current detected arrow position
+        # Current detected arrow position (stable — only updated after confirmation)
         self._arrow_px: Optional[int] = None
         self._arrow_py: Optional[int] = None
+
+        # Jump-confirmation state: a candidate far from the last known position
+        # must appear in consecutive frames before being accepted.
+        self._arrow_cand_xy:   Optional[Tuple[int, int]] = None
+        self._arrow_cand_hits: int = 0
 
         # Red circle pins detected from the game map  [(px, py, timestamp), ...]
         # Used ONLY for setup-mode crosshairs (visual feedback).
@@ -143,6 +148,10 @@ class GameMapOverlay(QWidget):
         # Optional callbacks for server.py to receive detections
         self._position_callback = None   # called with (arrow_px, arrow_py)
         self._pin_callback = None        # called with (cx, cy) when new pin added
+
+        # Motherload survey triangulation display
+        self._motherload_readings: List[Tuple[float, float, int]] = []  # (east, south, dist_m)
+        self._motherload_point: Optional[Tuple[float, float]] = None    # triangulated result
 
     # ------------------------------------------------------------------
     # Public API
@@ -186,6 +195,27 @@ class GameMapOverlay(QWidget):
         if not (-0.5 <= u <= 1.5 and -0.5 <= v <= 1.5):
             return None
         return u * self._map_w, v * self._map_h
+
+    def pixel_to_world(self, px: float, py: float) -> Optional[Tuple[float, float]]:
+        """Inverse of world_to_pixel — convert overlay pixel position to world coords.
+
+        Uses the area calibration loaded from the calibration JSON files.
+        Returns (east, south) or None if no calibration is loaded.
+        """
+        cal = self._cal_data
+        if cal is None or self._map_w <= 0 or self._map_h <= 0:
+            return None
+        x_left   = cal['x_left']
+        x_right  = cal['x_right']
+        z_top    = cal['z_top']
+        z_bottom = cal['z_bottom']
+        if x_right == x_left or z_top == z_bottom:
+            return None
+        u     = px / self._map_w
+        v     = py / self._map_h
+        east  = x_left  + u * (x_right  - x_left)
+        south = z_top   - v * (z_top    - z_bottom)
+        return east, south
 
     def add_coord_pin(self, east: float, south: float):
         """Record a chat-derived coordinate pin for setup-mode visual feedback."""
@@ -282,6 +312,27 @@ class GameMapOverlay(QWidget):
         """Register callback(cx, cy) called when a new red circle pin is added."""
         self._pin_callback = cb
 
+    def set_motherload_data(self, readings, triangulated):
+        """Update motherload circle display.
+
+        readings    — list of (east, south, dist_m) tuples
+        triangulated — {"east": e, "south": s} dict or None
+        """
+        self._motherload_readings = list(readings) if readings else []
+        self._motherload_point = (
+            (triangulated["east"], triangulated["south"]) if triangulated else None
+        )
+        self.update()
+
+    def _meters_to_px(self, meters: float) -> float:
+        """Convert a distance in game metres to overlay pixels (average of x/y scale)."""
+        if self._cal_data is None or self._map_w <= 0 or self._map_h <= 0:
+            return 0.0
+        cal = self._cal_data
+        scale_x = self._map_w / abs(cal["x_right"] - cal["x_left"])
+        scale_y = self._map_h / abs(cal["z_top"]   - cal["z_bottom"])
+        return meters * (scale_x + scale_y) / 2.0
+
     def set_visible(self, visible: bool):
         if visible:
             self._timer.start()
@@ -315,10 +366,64 @@ class GameMapOverlay(QWidget):
 
             arr = np.array(img.convert("RGB"))
 
-            result = find_player_arrow(arr)
+            # Build exclusion list from known overlay marker positions so their
+            # black-outlined circles are not mistaken for the player arrow.
+            # Use _loc_to_pixel() so calibrated world→pixel is applied; it
+            # falls back to raw pixel_x/y when calibration is not yet available.
+            # Also exclude motherload reading origin dots.
+            exclude = []
+            for loc in self._locations:
+                pos = self._loc_to_pixel(loc)
+                if pos:
+                    exclude.append((int(pos[0]), int(pos[1])))
+            for (me, ms, _md) in self._motherload_readings:
+                pos = self.world_to_pixel(me, ms)
+                if pos:
+                    exclude.append((int(pos[0]), int(pos[1])))
+
+            result = find_player_arrow(arr, exclude_positions=exclude or None)
             if result:
-                self._arrow_px, self._arrow_py = result
                 self._debug_arrow_ok += 1
+                rx, ry = result
+
+                if self._arrow_px is None:
+                    # No lock yet — accept the first detection directly.
+                    self._arrow_px, self._arrow_py = rx, ry
+                    self._arrow_cand_xy   = None
+                    self._arrow_cand_hits = 0
+                else:
+                    # Measure distance from the current stable position.
+                    dx = rx - self._arrow_px
+                    dy = ry - self._arrow_py
+                    dist = (dx * dx + dy * dy) ** 0.5
+
+                    if dist <= 35:
+                        # Close to last known position — accept directly.
+                        self._arrow_px, self._arrow_py = rx, ry
+                        self._arrow_cand_xy   = None
+                        self._arrow_cand_hits = 0
+                    else:
+                        # Far jump — require it to appear in 2 consecutive frames
+                        # before we commit.  This prevents single-frame noise from
+                        # snapping the dot to a wrong map feature.
+                        if self._arrow_cand_xy is not None:
+                            cdx = rx - self._arrow_cand_xy[0]
+                            cdy = ry - self._arrow_cand_xy[1]
+                            same_cand = (cdx * cdx + cdy * cdy) ** 0.5 <= 20
+                        else:
+                            same_cand = False
+
+                        if same_cand:
+                            self._arrow_cand_hits += 1
+                            if self._arrow_cand_hits >= 2:
+                                # Confirmed new position — commit it.
+                                self._arrow_px, self._arrow_py = rx, ry
+                                self._arrow_cand_xy   = None
+                                self._arrow_cand_hits = 0
+                        else:
+                            # New unconfirmed far candidate — start fresh count.
+                            self._arrow_cand_xy   = (rx, ry)
+                            self._arrow_cand_hits = 1
 
             # Detect the game's temporary red survey circle (only during setup)
             if self._setup_active:
@@ -455,7 +560,7 @@ class GameMapOverlay(QWidget):
 
             # --- Route lines between stops ---
             if active_route:
-                pen = QPen(QColor(70, 160, 255, 210), 3)
+                pen = QPen(QColor(255, 180, 20, 210), 3)
                 pen.setStyle(Qt.DashLine)
                 painter.setPen(pen)
 
@@ -513,8 +618,58 @@ class GameMapOverlay(QWidget):
                     )
 
         # --- Player dot ---
+        # NOTE: colour must NOT be cyan/turquoise (H ≈ 75-103 in OpenCV HSV).
+        # The arrow detector looks for cyan; a cyan dot would score higher than
+        # the tiny game arrow when zoomed out and permanently confuse detection.
+        # Hot-pink (H ≈ 330°) is vivid, distinct from all other overlay elements,
+        # and completely outside the cyan hue band used for detection.
         if self._arrow_px is not None:
             pp = QPointF(self._arrow_px, self._arrow_py)
             painter.setPen(QPen(QColor(0, 0, 0, 180), 2))
-            painter.setBrush(QBrush(QColor(0, 200, 255, 200)))
+            painter.setBrush(QBrush(QColor(255, 40, 160, 220)))
             painter.drawEllipse(pp, 6, 6)
+
+        # --- Motherload distance circles ---
+        for (east, south, dist_m) in self._motherload_readings:
+            pos = self.world_to_pixel(east, south)
+            if not pos:
+                continue
+            cx, cy = pos
+            radius_px = self._meters_to_px(dist_m)
+            if radius_px < 2:
+                continue
+            # Dashed orange circle
+            pen = QPen(QColor(255, 160, 0, 130), 2)
+            pen.setStyle(Qt.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QPointF(cx, cy), radius_px, radius_px)
+            # Small dot at the measurement origin
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor(255, 160, 0, 200)))
+            painter.drawEllipse(QPointF(cx, cy), 4, 4)
+            # Distance label
+            painter.setPen(QColor(255, 200, 100, 210))
+            painter.setFont(QFont("Arial", 8))
+            painter.drawText(QPointF(cx + 6, cy - 4), f"{dist_m}m")
+
+        # --- Motherload triangulated target ---
+        if self._motherload_point:
+            te, ts = self._motherload_point
+            pos = self.world_to_pixel(te, ts)
+            if pos:
+                tx, ty = pos
+                r = 14
+                d = r * 0.65
+                pen = QPen(QColor(255, 60, 60, 230), 3)
+                painter.setPen(pen)
+                painter.setBrush(Qt.NoBrush)
+                # 8-pointed star burst
+                painter.drawLine(QPointF(tx - r, ty),   QPointF(tx + r, ty))
+                painter.drawLine(QPointF(tx, ty - r),   QPointF(tx, ty + r))
+                painter.drawLine(QPointF(tx - d, ty - d), QPointF(tx + d, ty + d))
+                painter.drawLine(QPointF(tx - d, ty + d), QPointF(tx + d, ty - d))
+                # Centre dot
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor(255, 60, 60, 220)))
+                painter.drawEllipse(QPointF(tx, ty), 5, 5)
