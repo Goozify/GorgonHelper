@@ -1755,7 +1755,7 @@ function setMainTab(tab) {
   if (activeCharId === '__availwo__' && tab === 'quests' && questsSubTab !== 'workorders') activeCharId = characters[0]?.id || null;
   if (activeCharId === '__sellgift__' && tab !== 'storage')       activeCharId = characters[0]?.id || null;
   if (tab !== 'storage') { sellGiftCharId = null; sellGiftSelected = null; storageKeyOpen = false; }
-  if (tab !== 'recipes') { recipeSkillOpen = false; }
+  if (tab !== 'recipes') { recipeSkillOpen = false; recipeKeyOpen = false; }
   document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('nav-' + tab)?.classList.add('active');
   document.getElementById('main-nav')?.classList.remove('nav-open');
@@ -5724,6 +5724,11 @@ let recipeSkillOpen   = false;
 let recipeSkillSearch = '';
 let _recipeSkillList  = [];
 let _recipeSkillClickListenerAdded = false;
+let recipeKeyFilter = '';
+let recipeKeyOpen   = false;
+let recipeKeySearch = '';
+let _recipeKeyList  = [];
+let _recipeKeyClickListenerAdded = false;
 let recipeSearchQ = '';
 let recipeSearchMode = 'name'; // 'name' | 'ingredient'
 let recipeSkillSort = null; // null | 'asc' | 'desc'
@@ -6271,6 +6276,16 @@ function getRecipeDisplayList() {
       pool = pool.filter(([,r]) => r[0].toLowerCase().includes(q) || (r[5]||'').toLowerCase().includes(q));
     }
   }
+  if (recipeKeyFilter) {
+    pool = pool.filter(([, r]) => {
+      const results = r[3];
+      if (!results) return false;
+      return results.some(([typeId]) => {
+        const kws = ITEMS[String(typeId)]?.[4] || [];
+        return kws.some(kw => { const e = kw.indexOf('='); return (e > 0 ? kw.slice(0, e) : kw) === recipeKeyFilter; });
+      });
+    });
+  }
   const known  = pool.filter(([k])=>allRecipeKeys.has(k));
   const locked = pool.filter(([k])=>!allRecipeKeys.has(k));
   let display = recipeShowLocked === 'all' ? pool
@@ -6321,6 +6336,7 @@ function renderRecipesTab() {
         <button class="mode-btn ${recipeShowLocked==='all'?'active':''}" id="recipeBtnAll" onclick="setRecipeLocked('all')">All (<span id="recipeAllCount">${known.length+locked.length}</span>)</button>
         <button class="mode-btn ${recipeShowLocked==='locked'?'active':''}" id="recipeBtnLocked" onclick="setRecipeLocked('locked')">Locked (<span id="recipeLockedCount">${locked.length}</span>)</button>
       </div>
+      ${_renderRecipeKwDd()}
       <span id="recipeSkillLevel" style="font-size:21px;color:var(--text-dim);white-space:nowrap">${getRecipeSkillLevelHtml()}</span>
     </div>
     <div id="recipeTableWrap">
@@ -6333,7 +6349,10 @@ function renderRecipesTab() {
     </div>
   </div>`;
   recipeSkillOpen = false;
+  recipeKeyOpen = false;
   _rsddEnsureClickOutside();
+  _rkwEnsureClickOutside();
+  _buildRecipeKeyList();
 }
 
 function updateRecipeBody(display, allRecipeKeys, knownCount, lockedCount, allCount) {
@@ -6494,6 +6513,107 @@ function _rsddEnsureClickOutside() {
     }
   });
 }
+// ── Recipe keyword (result-item) filter dropdown ──────────────────────────────
+function _buildRecipeKeyList() {
+  const kwMap = new Map();
+  for (const [, r] of Object.entries(RECIPES)) {
+    const results = r[3];
+    if (!results) continue;
+    for (const [typeId] of results) {
+      const kws = ITEMS[String(typeId)]?.[4] || [];
+      for (const kw of kws) {
+        const e = kw.indexOf('='); const raw = e > 0 ? kw.slice(0, e) : kw;
+        if (raw && !kwMap.has(raw)) kwMap.set(raw, fmtKeyword(raw));
+      }
+    }
+  }
+  _recipeKeyList = [...kwMap.entries()].map(([raw, label]) => ({ raw, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function _buildRecipeKeyListHtml() {
+  const q = recipeKeySearch.toLowerCase();
+  const list = q ? _recipeKeyList.filter(k => k.label.toLowerCase().includes(q)) : _recipeKeyList;
+  if (!list.length) return '<div class="kw-dd-item" style="color:var(--text-dim);cursor:default">No keywords found</div>';
+  return list.map(k =>
+    `<div class="kw-dd-item${k.raw === recipeKeyFilter ? ' kw-selected' : ''}"
+      onmousedown="event.preventDefault();_rkwSelect('${k.raw.replace(/'/g,"\\'")}')">
+      ${k.label}</div>`
+  ).join('');
+}
+
+function _renderRecipeKwDd() {
+  if (!_recipeKeyList.length) _buildRecipeKeyList();
+  const hasVal = recipeKeyFilter !== '';
+  const inputVal = hasVal ? fmtKeyword(recipeKeyFilter).replace(/"/g, '&quot;') : '';
+  const clearBtn = hasVal
+    ? `<button class="kw-dd-clear" id="recipeKwClear" title="Clear keyword filter"
+         onmousedown="event.preventDefault();event.stopPropagation();_rkwClear()">✕</button>`
+    : '';
+  return `<div class="kw-dd-wrap" id="recipeKwWrap">
+    ${clearBtn}
+    <input class="kw-dd-input${hasVal ? ' has-value' : ''}" id="recipeKwInput" type="text"
+      placeholder="Filter by keyword…" value="${inputVal}"
+      onfocus="_rkwFocus()" oninput="_rkwSearch(this.value)" onblur="_rkwBlur()">
+    <span class="kw-dd-arrow">▾</span>
+  </div>`;
+}
+
+function _rkwFocus() {
+  if (recipeKeyOpen) return;
+  recipeKeyOpen = true;
+  recipeKeySearch = '';
+  const wrap = document.getElementById('recipeKwWrap');
+  if (!wrap) return;
+  document.getElementById('recipeKwList')?.remove();
+  const list = document.createElement('div');
+  list.className = 'kw-dd-list'; list.id = 'recipeKwList';
+  list.innerHTML = _buildRecipeKeyListHtml();
+  wrap.appendChild(list);
+}
+function _rkwBlur() { /* handled by click-outside */ }
+function _rkwSearch(v) {
+  recipeKeySearch = v;
+  if (!recipeKeyOpen) { _rkwFocus(); return; }
+  const list = document.getElementById('recipeKwList');
+  if (list) list.innerHTML = _buildRecipeKeyListHtml();
+}
+function _rkwSelect(raw) {
+  recipeKeyFilter = raw === recipeKeyFilter ? '' : raw;
+  recipeKeyOpen = false; recipeKeySearch = '';
+  document.getElementById('recipeKwList')?.remove();
+  const input = document.getElementById('recipeKwInput');
+  if (input) {
+    input.value = recipeKeyFilter ? fmtKeyword(recipeKeyFilter) : '';
+    input.className = `kw-dd-input${recipeKeyFilter ? ' has-value' : ''}`;
+  }
+  const oldClear = document.getElementById('recipeKwClear');
+  if (recipeKeyFilter) {
+    const btn = document.createElement('button');
+    btn.className = 'kw-dd-clear'; btn.id = 'recipeKwClear'; btn.title = 'Clear keyword filter';
+    btn.setAttribute('onmousedown', 'event.preventDefault();event.stopPropagation();_rkwClear()');
+    btn.textContent = '✕';
+    if (oldClear) oldClear.replaceWith(btn); else document.getElementById('recipeKwWrap')?.prepend(btn);
+  } else {
+    oldClear?.remove();
+  }
+  renderRecipesTab();
+}
+function _rkwClear() { _rkwSelect(recipeKeyFilter); }
+function _rkwEnsureClickOutside() {
+  if (_recipeKeyClickListenerAdded) return;
+  _recipeKeyClickListenerAdded = true;
+  document.addEventListener('click', e => {
+    if (mainTab !== 'recipes' || !recipeKeyOpen) return;
+    if (!e.target.closest('#recipeKwWrap')) {
+      recipeKeyOpen = false; recipeKeySearch = '';
+      document.getElementById('recipeKwList')?.remove();
+      const input = document.getElementById('recipeKwInput');
+      if (input) input.value = recipeKeyFilter ? fmtKeyword(recipeKeyFilter) : '';
+    }
+  });
+}
+
 function cycleRecipeSkillSort() {
   recipeSkillSort = recipeSkillSort === null ? 'asc' : recipeSkillSort === 'asc' ? 'desc' : null;
   const { known, locked, display, allRecipeKeys } = getRecipeDisplayList();
